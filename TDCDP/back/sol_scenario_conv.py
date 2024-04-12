@@ -1,10 +1,21 @@
 import os
-print(os.listdir())
 import networkx as nx
 import osmnx as ox
 import numpy as np
 import geopandas as gpd
 from shapely.ops import linemerge
+
+# save root path to ensure easily navigating back
+root_path = os.getcwd()
+try:
+    # attempt to change folder to TDCDP working folder
+    os.chdir(os.getcwd() + '/TDCDP')
+    try:
+        os.chdir(os.getcwd() + '/rotterdam')
+    except:
+        raise Exception('rotterdam folder not found')
+except:
+    raise Exception('TDCDP folder not found')
 
 # Helper function, skip
 def kwikqdrdist(lata, lona, latb, lonb):
@@ -21,6 +32,50 @@ def kwikqdrdist(lata, lona, latb, lonb):
     qdr     = np.degrees(np.arctan2(dlon * cavelat, dlat)) % 360
     return qdr, dist
 
+def spawndrone(trkid, u, v, r):
+    """Function that spawns a drone at a given location.
+    trkid = truck id
+    u = start node number (spawn location)
+    v = customer node number
+    r = retrieval node number
+    """
+    spawn_coords = nodes.get_coordinates().loc[u] # Get initial location location
+    target_coords = nodes.get_coordinates().loc[v] # Get target customer location
+    retrieval_coords = nodes.get_coordinates().loc[r] # Get target retrieval location
+    achdg, _ = kwikqdrdist(spawn_coords.y, spawn_coords.x, target_coords.y, target_coords.x) # get original heading
+    acid = 'SP1'
+    actype = 'M600'
+    acalt = 8 # ft, truck height
+    acspd = 0 # kts, start from standstill
+    cruise_spd = 25 # kts
+    cruise_alt = 100 # ft
+    # When the truck arrives at the target node, the drone is released (spawned). Initially, the speed is 0.
+    scen_text = f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 CRE {acid} {actype} {spawn_coords.y}' + \
+           f' {spawn_coords.x} {achdg} {acalt} {acspd}\n'
+    
+    # View waypoints of spawned AC for testing. Helps for tracking the route. Remove later.
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 POS {acid}\n'
+
+    # The spawned drone first has to climb to a safe altitude (avoidance of collisions). Let spawned drone climb.
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ALT {acid} 100\n' 
+    # Now, the cruise speed can be set.
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 {acid} ATALT 100 SPD {acid} 25\n' 
+
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDWAYPOINTS {acid}'
+    cust_spd = 5 # kts
+    for wp in [spawn_coords, target_coords, retrieval_coords]:
+        # Add the text for this waypoint.
+        scen_text += f',{wp.y},{wp.x},{cruise_alt},{cruise_spd},TURNSPD,{cust_spd}'
+
+    # Add enter space after waypoints
+    scen_text += '\n'
+
+    # Configure properly. Enable its vertical and horizontal navigation
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 LNAV {acid} ON\n'
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 VNAV {acid} ON\n'
+
+    return scen_text
+
 # The graph of Rotterdam is contained within the rotterdam.gpkg file. The graphml one is just an alternative
 # format that is sometimes needed. To visualise the graph nicely, you can install QGIS (qgis.org) and open
 # rotterdam.qgz . If the window is just blank, you can right click on the edges layer on the left
@@ -33,8 +88,11 @@ def kwikqdrdist(lata, lona, latb, lonb):
 
 # You can import a graph using both the .graphml and the .gpkg. However, the gpkg is nicer to work with
 # as geopandas likes it more. So this is how you can load a graph:
-nodes = gpd.read_file('rotterdam.gpkg', layer='nodes')
-edges = gpd.read_file('rotterdam.gpkg', layer='edges')
+try:
+    nodes = gpd.read_file('rotterdam.gpkg', layer='nodes')
+    edges = gpd.read_file('rotterdam.gpkg', layer='edges')
+except:
+    raise Exception('Rotterdam graph not found')
 
 # When loading a graph from a gpkg, geopandas will try to (incorrectly) guess the index. 
 # So we need to set the correct index.
@@ -126,7 +184,7 @@ achdg, _ = kwikqdrdist(route_lats[0], route_lons[0], route_lats[1], route_lons[1
 # CRE command takes Aircraft ID, Aircraft Type, Lat, Lon, hdg, alt[ft], spd[kts]
 acid = 'D1'
 actype = 'M600'
-acalt = 100 # ft, random altitude
+acalt = 0 # ft, ground altitude
 acspd = 5 if turns[1] else 25 #kts, set it as 5 if the first waypoint is a turn waypoint.
 scen_text += f'00:00:00>CRE {acid} {actype} {route_lats[0]} {route_lons[0]} {achdg} {acalt} {acspd}\n'
 
@@ -155,12 +213,25 @@ for wplat, wplon, turn in zip(route_lats, route_lons, turns):
 # Add a newline at the end of the addwaypoints command
 scen_text += '\n'
 
+# Let drones spawn at calculated target locations
+
+scen_text += spawndrone('D1', 652, 2320, 655)
+
 # Now we just need to make sure that the aircraft is configured properly. So we enable its vertical and horizontal navigation
 scen_text += f'00:00:00>LNAV {acid} ON\n'
 scen_text += f'00:00:00>VNAV {acid} ON\n'
+# Turn trail on, tracing for testing
+scen_text += '00:00:00>TRAIL ON \n'
+scen_text += f'00:00:00>POS {acid}\n'
 # We also want the aircraft removed when it reaches the destination. We can use an ATDIST command for that.
 destination_tolerance = 3/1852 # we consider it arrived if it is within 3 metres of the destination, converted to nautical miles.
 scen_text += f'00:00:00>{acid} ATDIST {route_lats[-1]} {route_lons[-1]} {destination_tolerance} DEL {acid}\n'
+
+# Change directory to scenario folder
+try:
+    os.chdir(root_path + '/scenario')
+except:
+    raise Exception('Scenario folder not found')
 
 # Now we save the text in a scenario file
 with open('RTMtest.scn', 'w') as f:
