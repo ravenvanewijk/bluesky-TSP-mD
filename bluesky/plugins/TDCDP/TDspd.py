@@ -1,3 +1,5 @@
+"""Plugin to ensure VNAV stays on after receiving a SPD command, such that AC keeps tracking WPT"""
+
 import os
 import bluesky as bs
 from bluesky.core import Entity
@@ -15,10 +17,10 @@ def init_plugin():
         # The type of this plugin. For now, only simulation plugins are possible.
         'plugin_type':     'sim'
     }
-    bs.traf.TDAutopilot = TDAutopilot()
+    bs.traf.SPDAP = SPDAP()
     return config
 
-class TDAutopilot(Entity):
+class SPDAP(Entity):
     def __init__(self):
         super().__init__()
 
@@ -38,4 +40,4 @@ class TDAutopilot(Entity):
         # Modified: this ensures autopilot mode does not change when SPDAP command is given
         # bs.traf.swvnavspd[idx]   = False
         return True
-
+        

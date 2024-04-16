@@ -59,7 +59,7 @@ def spawndrone(trkid, u, v, r):
     # The spawned drone first has to climb to a safe altitude (avoidance of collisions). Let spawned drone climb.
     scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ALT {acid} 100\n' 
     # Now, the cruise speed can be set.
-    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 {acid} ATALT 100 SPD {acid} 25\n' 
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 {acid} ATALT 100 SPDAP {acid} 25\n' 
 
     scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDWAYPOINTS {acid}'
     cust_spd = 5 # kts
@@ -198,7 +198,7 @@ cruise_alt = acalt # Keep it constant throughout the flight
 turn_spd = 5 #kts
 
 # So let's create this command now
-scen_text += f'00:00:00>ADDWAYPOINTS {acid}' # First add the root of the command
+scen_text += f'00:00:00>ADDDELIVERYPOINTS {acid}' # First add the root of the command
 # Then start looping through waypoints
 for wplat, wplon, turn in zip(route_lats, route_lons, turns):
     # Check if this waypoint is a turn
@@ -208,7 +208,7 @@ for wplat, wplon, turn in zip(route_lats, route_lons, turns):
         wptype = 'FLYBY'
     # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
     # ignore it if the wptype is set as FLYBY
-    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}'
+    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}, DELIVERY'
 
 # Add a newline at the end of the addwaypoints command
 scen_text += '\n'
