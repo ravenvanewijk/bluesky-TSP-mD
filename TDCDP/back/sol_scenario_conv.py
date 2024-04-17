@@ -61,11 +61,15 @@ def spawndrone(trkid, u, v, r):
     # Now, the cruise speed can be set.
     scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 {acid} ATALT 100 SPDAP {acid} 25\n' 
 
-    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDWAYPOINTS {acid}'
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDDELIVERYPOINTS {acid}'
     cust_spd = 5 # kts
     for wp in [spawn_coords, target_coords, retrieval_coords]:
+        if wp.x == target_coords.x and wp.y == target_coords.y:
+            delivery = 'DELIVERY'
+        else:
+            delivery = 'nondelivery'
         # Add the text for this waypoint.
-        scen_text += f',{wp.y},{wp.x},{cruise_alt},{cruise_spd},TURNSPD,{cust_spd}'
+        scen_text += f',{wp.y},{wp.x},{cruise_alt},{cruise_spd},TURNSPD,{cust_spd}, {delivery}'
 
     # Add enter space after waypoints
     scen_text += '\n'
@@ -208,7 +212,7 @@ for wplat, wplon, turn in zip(route_lats, route_lons, turns):
         wptype = 'FLYBY'
     # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
     # ignore it if the wptype is set as FLYBY
-    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}, DELIVERY'
+    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}, Nondelivery'
 
 # Add a newline at the end of the addwaypoints command
 scen_text += '\n'
