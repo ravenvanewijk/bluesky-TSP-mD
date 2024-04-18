@@ -166,6 +166,23 @@
       "h_max": 2500,
       "d_range_max": 5      
    }
+  },
+  "Truck": {
+    "name": "Delivery truck",
+    "n_engines": 6,
+    "engine_type": "TS",
+    "mtow": 15.1,
+    "oew": 9.1,
+    "mfc": 0,
+    "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
+    "envelop": {
+      "v_min": -18,
+      "v_max": 18,
+      "vs_min": -5,
+      "vs_max": 5,
+      "h_max": 0,
+      "d_range_max": 10
+    }
   }
 }  
       

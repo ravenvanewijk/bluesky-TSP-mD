@@ -3,7 +3,7 @@ import bluesky as bs
 import numpy as np
 import random
 
-from bluesky.tools.geo import kwikdist_matrix
+from bluesky.tools.geo import kwikdist_matrix, qdrdist
 from bluesky.tools.misc import txt2tim
 from bluesky.core import Entity, timed_function
 from bluesky import stack
@@ -28,6 +28,7 @@ def init_plugin():
 class Delivery(Entity):
     def __init__(self):
         super().__init__()
+        self.delivery_states = {}
         
     @stack.command
     def adddeliverypoints(self, acidx: 'acid', *args):
@@ -51,6 +52,7 @@ class Delivery(Entity):
                             Turnspeed for waypoint(s) marked as delivery automatically adjusted to 0.')
                 # Modify TURNSPD to 0 for all delivery waypoints
                 wp[5] = '0'
+                wp[4] = 'TURNSPD'
         
         # Check if attribute already exists. If not: create it (first cmds); iff exists: append it (later cmds).
         if hasattr(acrte, 'delivery_wp'):
@@ -68,30 +70,44 @@ class Delivery(Entity):
     def check_delivery(self):
         delivery_duration = 5
         for acid in bs.traf.id:
+            acidx = bs.traf.id.index(acid)
             acrte = Route._routes[acid]
             iactwp = acrte.iactwp
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'delivery_wp'):
-                if acrte.delivery_wp[iactwp] == 'DELIVERY':
+                _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
+                # when distance is neglible, set SPD to 0 manually
+                # if acrte.delivery_wp[iactwp] == 'DELIVERY' and actdist < 0.0025 and bs.traf.cas[acidx] == 0:
+                if acrte.delivery_wp[iactwp] == 'DELIVERY' and actdist < 0.0025:
                     # AC has a delivery WP. When arrived at WP, decline to ALT and deliver package
-                    stack.stack(f'{acid} ATDIST {acrte.wplat[iactwp]} {acrte.wplon[iactwp]} 0.0025 {acid} ATSPD 0 \
-                                {acid} ALT 0')
+                    bs.traf.selspd[acidx] = 0
+                    bs.traf.swvnavspd[acidx]   = False
+                    stack.stack(f'{acid} ALT 0')
                     # once the sequence of commands starts, remove the delivery tag
                     acrte.delivery_wp[iactwp] = 'DELIVERING'
+                    # log delivery start to delivery state dict. This will trigger the delivery process.
+                    self.delivery_states[acid] = {'start_time': bs.sim.simt, 'wp_index': iactwp}
                     
-                if acrte.delivery_wp[iactwp] == 'DELIVERING':
-                    # AC is out making a delivery. When it reaches the delivery altitude, wait the delivery time
+                if acid in self.delivery_states:
+                    # AC is marked to make a delivery. Start the timer for the first time the altitude is 0
+                    # At altitude 0 the delivery starts
                     # After the waiting time, ascend to cruise altitude again
-                    if bs.traf.alt[iactwp] == 0:
-                        acrte.delivery_wp[iactwp] = 'DELDONE'
-                        self.t_delivery = bs.sim.simt
+                    if bs.traf.alt[acidx] == 0 and 'delivery_start' not in self.delivery_states[acid]:
+                        self.delivery_states[acid]['delivery_start'] = bs.sim.simt
 
-                elif acrte.delivery_wp[iactwp] == 'DELDONE':
-                    # When delivery has occured (after the waiting time), fly back to cruise altitude and speed
-                    if bs.sim.simt - self.t_delivery > delivery_duration:
-                        stack.stack(f'{acid} ALT 100')
-                        stack.stack(f'{acid} ATALT 100 SPDAP {acid} 25')
-                        # QUESTION::: Why can this only be initiated at SPD 5 ?
-                        stack.stack(f'{acid} ATALT 100 ATSPD {acid} 5 LNAV SP1 ON')
-                        stack.stack(f'{acid} ATALT 100 ATSPD {acid} 5 VNAV SP1 ON')
-                        acrte.delivery_wp[iactwp] = 'Nondelivery'
+                    # check whether delivery has started
+                    elif 'delivery_start' in self.delivery_states[acid]:
+                        # When delivery has occured (after the waiting time), fly back to cruise altitude and speed
+                        if bs.sim.simt - self.delivery_states[acid]['delivery_start'] >= delivery_duration:
+                            # only if the vehicle is not a truck, continue with ascend. Otherwise, directly accelerate
+                            if bs.traf.type[acidx] != 'TRUCK':
+                                stack.stack(f'{acid} ALT 100')
+                                stack.stack(f'{acid} ATALT 100 SPDAP {acid} 25')
+                            else:
+                                stack.stack(f'SPDAP {acid} 25')
+                            # QUESTION::: Why can this only be initiated at SPD lower than 5 ?
+                            stack.stack(f'ATSPD {acid} 5 LNAV {acid} ON')
+                            stack.stack(f'ATSPD {acid} 5 VNAV {acid} ON')
+                            # delivery is done, remove from the delivery states dict
+                            print(self.delivery_states)
+                            self.delivery_states.pop(acid, None)

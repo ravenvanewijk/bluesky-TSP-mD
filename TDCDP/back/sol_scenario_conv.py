@@ -187,7 +187,7 @@ achdg, _ = kwikqdrdist(route_lats[0], route_lons[0], route_lats[1], route_lons[1
 # Now we can initialise the create command. We mostly use the Matrice 600 (M600) model for drone simulations.
 # CRE command takes Aircraft ID, Aircraft Type, Lat, Lon, hdg, alt[ft], spd[kts]
 acid = 'D1'
-actype = 'M600'
+actype = 'Truck'
 acalt = 0 # ft, ground altitude
 acspd = 5 if turns[1] else 25 #kts, set it as 5 if the first waypoint is a turn waypoint.
 scen_text += f'00:00:00>CRE {acid} {actype} {route_lats[0]} {route_lons[0]} {achdg} {acalt} {acspd}\n'
