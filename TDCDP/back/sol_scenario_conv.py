@@ -69,7 +69,7 @@ def spawndrone(trkid, u, v, r):
         else:
             delivery = 'nondelivery'
         # Add the text for this waypoint.
-        scen_text += f',{wp.y},{wp.x},{cruise_alt},{cruise_spd},TURNSPD,{cust_spd}, {delivery}'
+        scen_text += f',{wp.y},{wp.x},{cruise_alt},{cruise_spd},TURNSPD,{cust_spd}, {delivery}, 5'
 
     # Add enter space after waypoints
     scen_text += '\n'
@@ -212,7 +212,7 @@ for wplat, wplon, turn in zip(route_lats, route_lons, turns):
         wptype = 'FLYBY'
     # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
     # ignore it if the wptype is set as FLYBY
-    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}, Nondelivery'
+    scen_text += f',{wplat},{wplon},{cruise_alt},{cruise_spd},{wptype},{turn_spd}, Nondelivery, 5'
 
 # Add a newline at the end of the addwaypoints command
 scen_text += '\n'
