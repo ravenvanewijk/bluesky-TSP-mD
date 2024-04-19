@@ -61,7 +61,7 @@ def spawndrone(trkid, u, v, r):
     # Now, the cruise speed can be set.
     scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 {acid} ATALT 100 SPDAP {acid} 25\n' 
 
-    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDDELIVERYPOINTS {acid}'
+    scen_text += f'00:00:00>{trkid} ATDIST {spawn_coords.y} {spawn_coords.x} 0.00025 ADDOPERATIONPOINTS {acid}'
     cust_spd = 5 # kts
     for wp in [spawn_coords, target_coords, retrieval_coords]:
         if wp.x == target_coords.x and wp.y == target_coords.y:
@@ -202,7 +202,7 @@ cruise_alt = acalt # Keep it constant throughout the flight
 turn_spd = 5 #kts
 
 # So let's create this command now
-scen_text += f'00:00:00>ADDDELIVERYPOINTS {acid}' # First add the root of the command
+scen_text += f'00:00:00>ADDOPERATIONPOINTS {acid}' # First add the root of the command
 # Then start looping through waypoints
 for wplat, wplon, turn in zip(route_lats, route_lons, turns):
     # Check if this waypoint is a turn
