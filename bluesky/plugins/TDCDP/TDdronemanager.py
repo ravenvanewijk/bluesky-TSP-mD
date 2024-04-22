@@ -2,6 +2,7 @@ import bluesky as bs
 from bluesky.core import Entity, timed_function
 from bluesky import stack
 from bluesky.tools.geo import qdrdist
+from bluesky.traffic import Route
 
 def init_plugin():
  
@@ -23,6 +24,7 @@ class DroneManager(Entity):
     def __init__(self):
         super().__init__()
         self.active_drones = {}
+        self.routes_to_modify = {}
 
     def add_drone(self, truck, type, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k, wpname_k, alt, spd):
         available_name = self.get_available_name()
@@ -32,7 +34,7 @@ class DroneManager(Entity):
         return available_name
 
     def get_available_name(self):
-        nr = sum('SP' in x for x in bs.traf.id)
+        nr = len(self.active_drones)
         return 'SP'+str(nr + 1)
 
     def spawn_drone(self, drone_name):
@@ -52,9 +54,7 @@ class DroneManager(Entity):
         stack.stack(scen_text)
         stack.stack(f"LNAV {drone_name} ON")
         stack.stack(f"VNAV {drone_name} ON")
-        stack.stack(f"{drone_name} ATSPD 1 ADDOPERATIONPOINTS {drone_name} SP1002 DELIVERY 5")
-        stack.stack(f"{drone_name} ATSPD 1 ADDOPERATIONPOINTS {drone_name} SP1003 RENDEZVOUS 1")
-        stack.stack(f"{drone_name} ATSPD 1 ADDOPERATIONPOINTS {data['truck']} {data['wpname_k']} RENDEZVOUS 1")
+        self.routes_to_modify[drone_name] = {'wpname_k': data['wpname_k'], 'truck': data['truck']}
 
     def complete_sortie(self, drone_name):
         if drone_name in self.active_drones:
@@ -66,3 +66,17 @@ class DroneManager(Entity):
     
     def retrieve_drone(self, drone_name):
         stack.stack(f"DEL {drone_name}")
+
+    @timed_function
+    def modify_wp(self):
+        to_remove = []
+        for drone_name in self.routes_to_modify:
+            acrte = Route._routes[drone_name]
+            stack.stack(f"ADDOPERATIONPOINTS {drone_name} {acrte.wpname[-2]} DELIVERY 5")
+            stack.stack(f"ADDOPERATIONPOINTS {drone_name} {acrte.wpname[-1]} RENDEZVOUS 1")
+            stack.stack(f"ADDOPERATIONPOINTS {self.routes_to_modify[drone_name]['truck']} \
+                        {self.routes_to_modify[drone_name]['wpname_k']} RENDEZVOUS 1")
+            to_remove.append(drone_name)
+        
+        for key in to_remove:
+            self.routes_to_modify.pop(key)

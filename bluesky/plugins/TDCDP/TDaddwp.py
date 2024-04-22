@@ -78,7 +78,7 @@ class Operations(Entity):
             bs.scr.echo('Invalid number of operational values, argument number must be 0 for sortie type modification.')
             return
         
-        elif wp.type.upper() not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS']:
+        elif wptype.upper() not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS']:
             bs.scr.echo('Invalid operation type, please select from: DELIVERY, SORTIE OR RENDEZVOUS')
 
         acid = bs.traf.id[acidx]
