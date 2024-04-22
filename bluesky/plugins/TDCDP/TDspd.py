@@ -1,6 +1,5 @@
 """Plugin to ensure VNAV stays on after receiving a SPD command, such that AC keeps tracking WPT"""
 
-import os
 import bluesky as bs
 from bluesky.core import Entity
 from bluesky import stack
