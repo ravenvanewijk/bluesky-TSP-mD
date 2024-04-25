@@ -108,8 +108,7 @@ class Operations(Entity):
     @timed_function(dt = bs.sim.simdt)
     def check_operation(self):
         """This function checks whether the next waypoint is an operational waypoint
-        If so, handle the situation accordingly by declining (optional), waiting and performing situational tasks.
-        e.g. waiting for drone rendezvous at location."""
+        If so, call the operation handler"""
         for acid in bs.traf.id:
             acidx = bs.traf.id.index(acid)
             acrte = Route._routes[acid]
@@ -123,48 +122,57 @@ class Operations(Entity):
                     
                 # check whether an operation is active, or start timer when vehicle is stationary at ALT and SPD 0
                 if acid in self.operational_states:
-                    # AC is marked to make a delivery. Start the timer for the first time the altitude is 0
-                    # At altitude 0 the delivery starts
-                    if bs.traf.alt[acidx] == 0 and bs.traf.cas[acidx] == 0 \
-                         and 'operation_start' not in self.operational_states[acid]:
-                        self.operational_states[acid]['operation_start'] = bs.sim.simt
-
-                    # check whether delivery has started
-                    elif 'operation_start' in self.operational_states[acid]:
-                        # When delivery has occured (after the waiting time), fly back to cruise altitude and speed
-                        if bs.sim.simt - self.operational_states[acid]['operation_start'] >= \
-                                        acrte.operation_duration[self.operational_states[acid]['wp_index']]: 
-                            if self.operational_states[acid]['op_type'] == 'DELIVERY':
-                                # Delivery is just 'waiting': no additional tasks
-                                pass
-                            elif self.operational_states[acid]['op_type'] == 'SORTIE':
-                                # Sortie means an AC is to be spawned and routed from the waypoint.
-                                self.drone_manager.spawn_drone(acrte.children[self.operational_states[acid]['wp_index']])
-                                self.drone_manager.route_drone(acrte.children[self.operational_states[acid]['wp_index']])
-                            elif self.operational_states[acid]['op_type'] == 'RENDEZVOUS':
-                                # Rendezvous entails waiting for the child drone to arrive at the location, or vice versa
-                                self.drone_manager.complete_sortie(acid)
-                                if self.drone_manager.check_rendezvous(
-                                                            acrte.children[self.operational_states[acid]['wp_index']]):
-                                    self.drone_manager.retrieve_drone(
-                                                            acrte.children[self.operational_states[acid]['wp_index']])
-                                else:
-                                    continue
-
-                            self.complete_operation(acrte, acidx, acid, iactwp)
+                    self.handle_operation(acrte, acidx, acid, iactwp)
 
     def commence_operation(self, acrte, acidx, acid, iactwp):
+        """This function let's the vehicle come to a complete stop at alt 0, and triggers the operation handler once
+        the stationary conditions are met."""
         # AC has a operation WP. When arrived at WP, decline to ALT and deliver package
         bs.traf.selspd[acidx] = 0
         bs.traf.swvnavspd[acidx]   = False
         stack.stack(f'{acid} ALT 0')
         op_type = acrte.op_type[iactwp].upper()
-        # once the sequence of commands starts, remove the operation tag
+        # once the sequence of commands starts, remove the operation tag such that this function is not called again
         acrte.operation_wp[iactwp] = False
         # log operation start to operation state dict. This will trigger the operation process.
         self.operational_states[acid] = {'start_time': bs.sim.simt, 'wp_index': iactwp, 'op_type': op_type}
 
+    def handle_operation(self, acrte, acidx, acid, iactwp):
+        """Handle the situation accordingly by declining (optional), waiting and performing situational tasks.
+        e.g. waiting for drone rendezvous at location."""
+        # AC is marked to make a delivery. Start the timer for the first time the altitude and speed are 0
+        # At that time, the operation timer starts
+        if bs.traf.alt[acidx] == 0 and bs.traf.cas[acidx] == 0 \
+                and 'operation_start' not in self.operational_states[acid]:
+            self.operational_states[acid]['operation_start'] = bs.sim.simt
+
+        # check whether delivery has started
+        elif 'operation_start' in self.operational_states[acid]:
+            # speed and alt are 0, check if 'waiting' time is over
+            if bs.sim.simt - self.operational_states[acid]['operation_start'] >= \
+                            acrte.operation_duration[self.operational_states[acid]['wp_index']]:
+                if self.operational_states[acid]['op_type'] == 'DELIVERY':
+                    # Delivery is just 'waiting': no additional tasks
+                    pass
+                elif self.operational_states[acid]['op_type'] == 'SORTIE':
+                    # Sortie means an AC is to be spawned and routed from the waypoint.
+                    self.drone_manager.spawn_drone(acrte.children[self.operational_states[acid]['wp_index']])
+                    self.drone_manager.route_drone(acrte.children[self.operational_states[acid]['wp_index']])
+                elif self.operational_states[acid]['op_type'] == 'RENDEZVOUS':
+                    # Rendezvous entails waiting for the child drone to arrive at the location, or vice versa
+                    self.drone_manager.complete_sortie(acid)
+                    if self.drone_manager.check_rendezvous(
+                                                acrte.children[self.operational_states[acid]['wp_index']]):
+                        self.drone_manager.retrieve_drone(
+                                                acrte.children[self.operational_states[acid]['wp_index']])
+                    else:
+                        return
+
+                # When operation(s) has/ have occured, complete the operation
+                self.complete_operation(acrte, acidx, acid, iactwp)
+
     def complete_operation(self, acrte, acidx, acid, iactwp):
+        """This function lets the vehicle continue on its route after succesfully completing its operation(s)."""
         wp_index = self.operational_states[acid]['wp_index']
         # only if the vehicle is not a truck, continue with ascend. Otherwise, directly accelerate
         # After the waiting time, ascend to cruise altitude again
