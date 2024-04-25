@@ -40,7 +40,7 @@ class DroneManager(Entity):
     def spawn_drone(self, drone_name):
         data = self.active_drones[drone_name]
         hdg, _ = qdrdist(float(data['lat_i']), float(data['lon_i']), float(data['lat_j']), float(data['lon_j']))
-        stack.stack(f"CRE {drone_name} {data['type']} {data['lat_i']} {data['lon_i']} {hdg} 8 0")
+        bs.traf.cre(drone_name, data['type'], data['lat_i'], data['lon_i'], hdg, 8, 0)
         self.active_drones[drone_name]['status'] = 'OTW'
 
     def route_drone(self, drone_name):
