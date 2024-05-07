@@ -75,7 +75,7 @@ class DroneManager(Entity):
             stack.stack(f"ADDOPERATIONPOINTS {drone_name} {acrte.wpname[-2]} DELIVERY 5")
             stack.stack(f"ADDOPERATIONPOINTS {drone_name} {acrte.wpname[-1]} RENDEZVOUS 1")
             stack.stack(f"ADDOPERATIONPOINTS {self.routes_to_modify[drone_name]['truck']} \
-                        {self.routes_to_modify[drone_name]['wpname_k']} RENDEZVOUS 1")
+                        {self.routes_to_modify[drone_name]['wpname_k']} RENDEZVOUS 1 {drone_name}")
             to_remove.append(drone_name)
         
         for key in to_remove:

@@ -58,17 +58,24 @@ class Operations(Entity):
         
 
     @stack.command
-    def addoperationpoints(self, acidx: 'acid', wpname: 'wpname', wptype: 'wptype', duration: 'duration', *args):
+    def addoperationpoints(self, acidx: 'acid', wpname: 'wpname/coords', wptype: 'wptype', duration: 'duration', *args):
         # Args are only valid for SORTIE type modification and come in this order: 
         # type, lat_j, lon_j, wpname_k, alt, spd
         wptype = wptype.upper()
-        if len(args) !=0 and (wptype == 'DELIVERY' or wptype.upper() == 'RENDEZVOUS'):
-            bs.scr.echo('Invalid number of operational values, argument number must be 0 for delivery or rendezvous \
+        wpname = wpname.upper()
+        if len(args) !=0 and wptype == 'DELIVERY':
+            bs.scr.echo('Invalid number of operational values, argument number must be 0 for delivery\
                 type modification.')
             return
 
+        if (len(args) !=1 and len(args) !=0) and wptype.upper() == 'RENDEZVOUS':
+            bs.scr.echo('Invalid number of operational values, argument number must be 0 or 1 for rendezvous \
+                type modification. If 1: child_name')
+            return
+
         elif len(args) !=6 and wptype == 'SORTIE':
-            bs.scr.echo('Invalid number of operational values, argument number must be 0 for sortie type modification.')
+            bs.scr.echo('Invalid number of operational values, argument number must be 6 for sortie type modification.\
+                        Order: type, lat_j, lon_j, wpname_k, alt, spd')
             return
         
         elif wptype not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS']:
@@ -76,6 +83,11 @@ class Operations(Entity):
 
         acid = bs.traf.id[acidx]
         acrte = Route._routes[acid]
+
+        if len(wpname.split('/')) == 2:
+            # Check whether coordinates are given. If so, look up wpname
+            wpname = get_wpname(wpname, acrte)
+
         wpid = acrte.wpname.index(wpname)
         if acrte.wpflyby[wpid]:
             bs.scr.echo('TURNSPD waypoint required for operation waypoints. \
@@ -95,18 +107,32 @@ class Operations(Entity):
             acrte.op_type[wpid].extend([wptype])
 
         if wptype.upper() == 'SORTIE':
-            wpid_k = acrte.wpname.index(args[3].upper())
+            if len(args[3].split('/')) == 2:
+                # Check whether coordinates are given. If so, look up wpname
+                wpname_k = get_wpname(args[3], acrte)
+                wpid_k = acrte.wpname.index(wpname_k)
+            else:
+                wpname_k = args[3]
+                wpid_k = acrte.wpname.index(args[3].upper())
             # truck, type, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k, wpname_k, alt, spd
             child = self.drone_manager.add_drone(acid, args[0], acrte.wplat[wpid], acrte.wplon[wpid], 
-                args[1], args[2], acrte.wplat[wpid_k], acrte.wplon[wpid_k], args[3], args[4], args[5])
+                args[1], args[2], acrte.wplat[wpid_k], acrte.wplon[wpid_k], wpname_k, args[4], args[5])
             if acrte.children[wpid][0] is None:
                 acrte.children[wpid] = [child]
             else:
                 acrte.children[wpid].extend([child])
-            if acrte.children[wpid_k][0] is None:
-                acrte.children[wpid_k] = [child]
+        
+        if wptype.upper() == 'RENDEZVOUS':
+            if len(wpname.split('/')) == 2:
+                # Check whether coordinates are given. If so, look up wpname
+                wpid_k = acrte.wpname.index(wpname)
             else:
-                acrte.children[wpid_k].extend([child])
+                wpid_k = acrte.wpname.index(wpname.upper())
+            if args:
+                if acrte.children[wpid_k][0] is None:
+                    acrte.children[wpid_k] = [args[0]]
+                else:
+                    acrte.children[wpid_k].extend([args[0]])
 
     @timed_function(dt = bs.sim.simdt)
     def check_operation(self):
@@ -116,6 +142,9 @@ class Operations(Entity):
             acidx = bs.traf.id.index(acid)
             acrte = Route._routes[acid]
             iactwp = acrte.iactwp
+            if iactwp == -1:
+                # Manually set active wp to 0 if AC is at start, ensure that WP1 can also be an operation
+                iactwp = 0
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'operation_wp'):
                 _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
@@ -132,7 +161,7 @@ class Operations(Entity):
         the stationary conditions are met."""
         # AC has a operation WP. When arrived at WP, decline to ALT and deliver package
         bs.traf.selspd[acidx] = 0
-        bs.traf.swvnavspd[acidx]   = False
+        bs.traf.swvnavspd[acidx] = False
         stack.stack(f'{acid} ALT 0')
         op_type = acrte.op_type[iactwp]
         # Track operational status, useful to discover if all operations have finished
@@ -201,3 +230,18 @@ class Operations(Entity):
         stack.stack(f'ATSPD {acid} 5 VNAV {acid} ON')
         # delivery is done, remove from the delivery states dict
         self.operational_states.pop(acid, None)
+
+def get_wpname(wpname, acrte, acc=11):
+    """Gets the wpname of a wp by looking for its coords.
+    args: type, description
+    wpname: string, coordinates lat lon separated by /, wp to look up
+    acrte: route object, route of the AC"""
+    lat, lon = wpname.split('/')
+    lat = str(round(float(lat), 11))
+    lon = str(round(float(lon), acc))
+    wps = list(zip([ f'%.{acc}f' % elem for elem in acrte.wplat],[ f'%.{11}f' % elem for elem in acrte.wplon]))
+    try:
+        match_index = next(i for i, pair in enumerate(wps) if pair == (lat, lon))
+        return acrte.wpname[match_index]
+    except StopIteration:
+        raise Exception(f'WP with coordinates {lat}, {lon} not found')
