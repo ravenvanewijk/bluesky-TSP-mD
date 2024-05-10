@@ -1,0 +1,8 @@
+1. Vehicles overshoot second waypoint when this is an operation waypoint. Cause unknown
+2. Truck doesnt go to WP when its a back and forth route. E.G. TRUCK469. Caused by iactwp incrementing before location is reached.
+3. Accuracy of reaching destination is quite low. Could be fixed. sometimes overshoots with couple of meters.
+
+5. Drone activity: Multiple drones can be 'active' i.e. stored in the memory, while not in the simulation. This causes higher number drones to be active as well, while there is only 1 drone.
+6. Drones do not get deleted at end depot node because truck is deleted first.
+7. When running the code twice, variables are not reset (like self.dronemanager)
+8. Operational durations are not a variable yet for Rendezvous and drone delivery
