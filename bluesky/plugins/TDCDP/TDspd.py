@@ -5,15 +5,9 @@ from bluesky.core import Entity
 from bluesky import stack
 
 def init_plugin():
-
-    # Addtional initilisation code
-
     # Configuration parameters
     config = {
-        # The name of your plugin
         'plugin_name':     'SPDAP',
-
-        # The type of this plugin. For now, only simulation plugins are possible.
         'plugin_type':     'sim'
     }
     bs.traf.SPDAP = SPDAP()

@@ -10,30 +10,40 @@ from bluesky.core import Entity, timed_function
 from bluesky import stack
 from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDdronemanager import DroneManager, get_wpname
- 
+
 def init_plugin():
     # Configuration parameters
     config = {
         'plugin_name':     'OPERATIONS',
-        'plugin_type':     'sim'
+        'plugin_type':     'sim',
+        'reset': reset
     }
-    bs.traf.operations = Operations()
+    bs.traf.Operations = Operations()
     return config
  
+def reset():
+    bs.traf.Operations.reset()
+
 class Operations(Entity):
     def __init__(self):
         super().__init__()
         self.operational_states = {}
         self.drone_manager = DroneManager()
+        self.trkdelqueue = []
     
+    def reset(self):
+        self.operational_states = {}
+        self.drone_manager.reset()
+        self.trkdelqueue = []
+
     @stack.command
-    def addtdwaypoints(self, acidx: 'acid', *args):
+    def addtdwaypoints(self, vehicleidx: 'acid', *args):
         # Args come in this order: lat, lon, alt, spd, TURNSPD/TURNRAD/FLYBY, turnspeed or turnrad value
         # (extended) add operation arg
-        Route.addwaypoints(acidx, *args)
+        Route.addwaypoints(vehicleidx, *args)
 
         wpcount = len(args)//6
-        acid = bs.traf.id[acidx]
+        acid = bs.traf.id[vehicleidx]
         acrte = Route._routes[acid]
         if hasattr(acrte, 'operation_wp'):
             acrte.operation_wp.extend(wpcount * [False])
@@ -57,7 +67,7 @@ class Operations(Entity):
         
 
     @stack.command
-    def addoperationpoints(self, acidx: 'acid', wpname: 'wpname/coords', wptype: 'wptype', duration: 'duration', *args):
+    def addoperationpoints(self, vehicleidx: 'acid', wpname: 'wpname/coords', wptype: 'wptype', duration: 'duration', *args):
         # Args are only valid for SORTIE type modification and come in this order: 
         # type, lat_j, lon_j, wpname_k, alt, spd
         wptype = wptype.upper()
@@ -80,7 +90,7 @@ class Operations(Entity):
         elif wptype not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS']:
             bs.scr.echo('Invalid operation type, please select from: DELIVERY, SORTIE OR RENDEZVOUS')
 
-        acid = bs.traf.id[acidx]
+        acid = bs.traf.id[vehicleidx]
         acrte = Route._routes[acid]
 
         if len(wpname.split('/')) == 2:
@@ -151,9 +161,6 @@ class Operations(Entity):
             acidx = bs.traf.id.index(acid)
             acrte = Route._routes[acid]
             iactwp = acrte.iactwp
-            # if len(acrte.wpname) > iactwp+2:
-            #     if acrte.wpname[iactwp] == 'TRUCK469' or acrte.wpname[iactwp] == 'TRUCK468' or acrte.wpname[iactwp] == 'TRUCK470' or acrte.wpname[iactwp] == 'TRUCK471' or acrte.wpname[iactwp] == 'TRUCK467':
-            #         print(iactwp, acrte.wpname[iactwp])
             if iactwp == -1:
                 # Manually set active wp to 0 if vehicle is at start, ensure that WP1 can also be an operation
                 iactwp = 0
@@ -178,11 +185,22 @@ class Operations(Entity):
         op_type = acrte.op_type[iactwp]
         # Track operational status, useful to discover if all operations have finished
         op_status = len(op_type) * [False]
+        # get children at this node to add to the operational states
+        children = []
+        i = 0
+        for op in op_type:
+            if op == 'DELIVERY':
+                # Deliveries do not have children, do not increment index i 
+                children.append(None)
+            else:
+                # Sorties and rendezvouss do have children. Add the child by looking in the route and increment index
+                children.append(acrte.children[iactwp][i])
+                i += 1
         # once the sequence of commands starts, remove the operation tag such that this function is not called again
         acrte.operation_wp[iactwp] = False
         # log operation start to operation state dict. This will trigger the operation process.
         self.operational_states[acid] = {'start_time': bs.sim.simt, 'wp_index': iactwp, 
-                                        'op_type': op_type, 'op_status': op_status}
+                                        'op_type': op_type, 'op_status': op_status, 'children': children}
 
     def handle_operation(self, acrte, acidx, acid, iactwp):
         """Handle the situation accordingly by declining (optional), waiting and performing situational tasks.
@@ -208,22 +226,30 @@ class Operations(Entity):
                         self.operational_states[acid]['op_status'][idx] = True
                     elif operation == 'SORTIE':
                         # Sortie means an AC is to be spawned and routed from the waypoint.
-                        self.drone_manager.spawn_drone(acrte.children[self.operational_states[acid]['wp_index']][idx])
-                        self.drone_manager.route_drone(acrte.children[self.operational_states[acid]['wp_index']][idx])
+                        self.drone_manager.spawn_drone(self.operational_states[acid]['children'][idx])
+                        self.drone_manager.route_drone(self.operational_states[acid]['children'][idx])
                         self.operational_states[acid]['op_status'][idx] = True
                     elif operation == 'RENDEZVOUS':
                         # Rendezvous entails waiting for the child drone to arrive at the location, or vice versa
                         self.drone_manager.complete_sortie(acid)
                         if self.drone_manager.check_rendezvous(
-                                                    acrte.children[self.operational_states[acid]['wp_index']][idx]):
+                                                    self.operational_states[acid]['children'][idx]):
                             self.drone_manager.retrieve_drone(
-                                                    acrte.children[self.operational_states[acid]['wp_index']][idx])
+                                                    self.operational_states[acid]['children'][idx])
+                            # Set operation status to True, meaning operation has finished
                             self.operational_states[acid]['op_status'][idx] = True
+                            # Remove child from operational states dict, operation is completed
+                            self.operational_states.pop(self.operational_states[acid]['children'][idx],
+                                                        None)
                         else:
                             continue
 
                 # When all operation(s) has/ have occured, complete the operation
                 if all(self.operational_states[acid]['op_status']):
+                    # Do not complete the operation if its the last truck wp, then it tries to continue
+                    if bs.traf.type[acidx] == 'TRUCK' and iactwp + 1 == len(acrte.wpname):
+                        self.operational_states.pop(acid, None)
+                        return
                     self.complete_operation(acrte, acidx, acid, iactwp)
 
     def complete_operation(self, acrte, acidx, acid, iactwp):
@@ -240,5 +266,33 @@ class Operations(Entity):
         # QUESTION::: Why can this only be initiated at SPD lower than 5 ?
         stack.stack(f'ATSPD {acid} 5 LNAV {acid} ON')
         stack.stack(f'ATSPD {acid} 5 VNAV {acid} ON')
-        # delivery is done, remove from the delivery states dict
+        # operation is done, remove from the operational states dict
         self.operational_states.pop(acid, None)
+
+
+    @stack.command(name='TRKDEL')
+    def truckdelete(self, idx):
+        """Delete a truck after it has completed its route and operations"""
+        # Multiple delete not supported 
+        # Get id of idx 
+        id = bs.traf.id.index(idx)
+        # Call the actual delete function, iif all operations have been succesfully completed
+        if len(self.operational_states) == 0:
+            bs.traf.delete(id)
+            # Update number of aircraft
+            bs.traf.ntraf = len(bs.traf.lat)
+        else:
+            self.trkdelqueue.append(idx)
+
+        return True
+
+    @timed_function(dt = bs.sim.simdt)
+    def trkdelwhendone(self):
+        """Checks which trucks are commanded to be deleted, and checks whether this deletion can be performed.
+        If so, the truck is deleted"""
+        for truck in self.trkdelqueue:
+            if len(self.operational_states) == 0:
+                id = bs.traf.id.index(truck)
+                self.truckdelete(truck)
+                self.trkdelqueue.remove(truck)
+        return True

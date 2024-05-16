@@ -3,27 +3,15 @@ from bluesky.core import Entity, timed_function
 from bluesky import stack
 from bluesky.tools.geo import qdrdist
 from bluesky.traffic import Route
-from math import isclose
-
-def init_plugin():
- 
-    # Addtional initilisation code
- 
-    # Configuration parameters
-    config = {
-        # The name of your plugin
-        'plugin_name':     'DRONEMANAGER',
- 
-        # The type of this plugin. For now, only simulation plugins are possible.
-        'plugin_type':     'sim'
-    }
-
-    return config
-
+from math import isclose, sqrt
 
 class DroneManager(Entity):
     def __init__(self):
         super().__init__()
+        self.active_drones = {}
+        self.routes_to_modify = {}
+
+    def reset(self):
         self.active_drones = {}
         self.routes_to_modify = {}
 
@@ -39,6 +27,7 @@ class DroneManager(Entity):
         return 'SP'+str(nr + 1)
 
     def spawn_drone(self, drone_name):
+        # add new get available name here____
         data = self.active_drones[drone_name]
         hdg, _ = qdrdist(float(data['lat_i']), float(data['lon_i']), float(data['lat_j']), float(data['lon_j']))
         bs.traf.cre(drone_name, data['type'], data['lat_i'], data['lon_i'], hdg, 8, 0)
@@ -90,35 +79,37 @@ class DroneManager(Entity):
         for key in to_remove:
             self.routes_to_modify.pop(key)
 
-    @timed_function(dt = 10)
-    def add_rendezvous(self):
-        for drone_name in self.active_drones:
-            if self.active_drones[drone_name]['status'] == 'OTW' and \
-                    len(self.active_drones[drone_name]['wpname_k'].split('/')) == 2:
-                truckrte = Route._routes[self.active_drones[drone_name]['truck']]
-                wpname_k = get_wpname(self.active_drones[drone_name]['wpname_k'], truckrte, acc=11)
-                if wpname_k is None:
-                    continue
-                print(f'Adding operation point k for {drone_name}')
-                wpid_k = truckrte.wpname.index(wpname_k.upper())
-                self.active_drones[drone_name]['lat_k'] = truckrte.wplat[wpid_k]
-                self.active_drones[drone_name]['lon_k'] = truckrte.wplon[wpid_k]
-                self.active_drones[drone_name]['wpname_k'] = wpname_k
-                data = self.active_drones[drone_name]
-                # Adding the drone to this dictionary ensures that its waypoint (and the truck) at k will be operations
-                self.routes_to_modify[drone_name] = {'wpname_k': data['wpname_k'], 'truck': data['truck']}
-
-def get_wpname(wpname, acrte, acc=6, tol=1e-6):
-    """Gets the wpname of a wp by looking for its coords.
-    args: type, description
-    wpname: string, coordinates lat lon separated by /, wp to look up
-    acrte: route object, route of the AC
-    tol: float, tolerance for coordinate matching
+def get_wpname(wpname, truckrte, tol=1e-6):
     """
+    Gets the closest wpname of a wp in a truck's route by looking for its coordinates.
+    
+    Args: type - description
+    wpname: str - coordinates in 'lat/lon' format to look up
+    acrte: route object - route of the truck containing waypoint data
+    acc: int - number of decimal places to consider for rounding coordinates
+    tol: float - tolerance for considering two coordinates as close
+    
+    Returns:
+    str: the name of the closest waypoint or None if not found
+    """
+    acc = int(tol**-1)
+    # Parse the input coordinates and round them
     lat, lon = map(float, wpname.split('/'))
     lat = round(lat, acc)
     lon = round(lon, acc)
-    
-    for i, (plat, plon) in enumerate(zip(acrte.wplat, acrte.wplon)):
-        if isclose(plat, lat, abs_tol=tol) and isclose(plon, lon, abs_tol=tol):
-            return acrte.wpname[i]
+
+    closest_wpname = None
+    # Initialize min_distance with infinity
+    min_distance = float('inf')  
+
+    # Iterate over all waypoints to find the closest one
+    for i, (plat, plon) in enumerate(zip(truckrte.wplat, truckrte.wplon)):
+        # Calculate the Euclidean distance (for simplicity)
+        distance = sqrt((plat - lat) ** 2 + (plon - lon) ** 2)
+
+        # Update the closest waypoint if a new minimum distance is found
+        if distance < min_distance:
+            min_distance = distance
+            closest_wpname = truckrte.wpname[i]
+
+    return closest_wpname
