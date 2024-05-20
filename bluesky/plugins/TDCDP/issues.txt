@@ -2,12 +2,12 @@
 2. [FIXED] Truck doesnt go to WP when its a back and forth route. E.G. TRUCK469. Caused by iactwp incrementing before location is reached. (improv)
 3. Accuracy of reaching destination is quite low. Could be fixed. sometimes overshoots with couple of meters. (improv)
 4. [FIXED] Order of operations incorrect when a node has Multiple operational procedures.
-5. Drone activity: Multiple drones can be 'active' i.e. stored in the memory, while not in the simulation. This causes higher number drones to be active as well, while there is only 1 drone. (newfunc)
+5. [FIXED] Drone activity: Multiple drones can be 'active' i.e. stored in the memory, while not in the simulation. This causes higher number drones to be active as well, while there is only 1 drone. (newfunc)
 6. [FIXED] Drones do not get deleted at end depot node because truck is deleted first.
 7. [FIXED] When running the code twice, variables are not reset (like self.dronemanager)
-8. Operational durations are not a variable yet for Rendezvous and drone delivery (newfunc)
-9. Order of operations not correct yet. Drone can be launched while it is still on its way. Should keep track of dronenumber and take this into account (newfunc)
+8. [FIXED] Operational durations are not a variable yet for Rendezvous and drone delivery (newfunc)
+9. [FIXED] Order of operations not correct yet. Drone can be launched while it is still on its way. Should keep track of dronenumber and take this into account (newfunc)
 10. [FIXED] Truck does not have any delivery points yet (newfunc)
 11. [FIXED] Delivery and rendezvous do not work together at same node (improv)
-12. [MOSTLY FIXED] When going in a back and forth path, truck slows down. Then speeds up rapidly when next node is reached (improv)
-13. Same node operations do not count separately  (improv)
+12. [FIXED] When going in a back and forth path, truck slows down. Then speeds up rapidly when next node is reached (improv)
+13. [FIXED] Same node operations do not count separately  (improv)
