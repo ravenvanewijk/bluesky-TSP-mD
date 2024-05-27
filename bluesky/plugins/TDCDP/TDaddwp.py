@@ -320,3 +320,39 @@ class Operations(Entity):
                 self.truckdelete(truck)
                 self.trkdelqueue.remove(truck)
         return True
+
+    @stack.command(name='TDRTAs')
+    @staticmethod
+    def TDSetRTAs(acidx: 'acid', *args):
+        """Convert wp coords to wpname and call regular setRTA vanilla method"""
+        if len(args)%2 != 0:
+            bs.scr.echo('You missed a set RTA value, arguement number must be a multiple of 2.')
+            return
+        
+        args = np.reshape(args, (int(len(args)/2), 2))
+
+        for RTAdata in args:
+            wpname = RTAdata[0]
+            if len(wpname.split('/')) == 2:
+                acid = bs.traf.id[acidx]
+                acrte = Route._routes[acid]
+                # Check whether coordinates are given. If so, look up wpname
+                wpname = get_wpname(wpname, acrte)
+            time = RTAdata[1]
+            # Call regular function
+            Route.SetRTA(acidx, wpname, time)
+
+    @stack.command(name='TDRTA')
+    @staticmethod
+    def TDSetRTA(acidx: 'acid', wpname, time: 'time'):  # all arguments of setRTA:
+        """Convert wp coords to wpname and call regular setRTA vanilla method"""
+        
+        if len(wpname.split('/')) == 2:
+            acid = bs.traf.id[acidx]
+            acrte = Route._routes[acid]
+            # Check whether coordinates are given. If so, look up wpname
+            wpname = get_wpname(wpname, acrte)
+        
+
+        # Call regular function
+        Route.SetRTA(acidx, wpname, float(time))

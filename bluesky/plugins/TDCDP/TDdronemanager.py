@@ -9,9 +9,11 @@ class DroneManager(Entity):
     def __init__(self):
         super().__init__()
         self.active_drones = {}
+        self.completed_ops = {}
 
     def reset(self):
         self.active_drones = {}
+        self.completed_ops = {}
 
     def add_drone(self, truck, type, UAVnumber, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k, wpname_k, alt, spd, 
                     service_t, recovery_t):
@@ -45,7 +47,8 @@ class DroneManager(Entity):
         args: type, description
         - UAVnumber: str, physical UAV number
         """
-        nr = sum(1 for key in self.active_drones.keys() if key.startswith(f'UAV{UAVnumber}'))
+        nr = sum(1 for key in self.active_drones.keys() if key.startswith(f'UAV{UAVnumber}')) +\
+                sum(1 for key in self.completed_ops.keys() if key.startswith(f'UAV{UAVnumber}'))
         return f'UAV{UAVnumber}_{nr + 1}'
 
     def spawn_drone(self, drone_name):
@@ -69,9 +72,6 @@ class DroneManager(Entity):
             if data['lon_k'] is None and wp == 'k':
                 # This means coordinates are given but embedded in the wpname
                 data['lat_k'], data['lon_k'] = data['wpname_k'].split('/')
-            # elif wp == 'k':
-            #     self.routes_to_modify[drone_name] = {'wpname_k': data['wpname_k'], 'truck': data['truck']}
-            
             scen_text += f"{data['lat_' + wp]} {data['lon_' + wp]} {data['alt']} {data['spd']} TURNSPD 5 "
 
         stack.stack(scen_text)
@@ -103,6 +103,8 @@ class DroneManager(Entity):
         args: type, description
         - drone_name: str, name of the drone to be created"""
         stack.stack(f"DEL {drone_name}")
+        self.active_drones[drone_name]['status'] = True
+        self.completed_ops[drone_name] = self.active_drones[drone_name]
         self.active_drones.pop(drone_name, None)
 
     def drone_available(self, UAVnumber):
