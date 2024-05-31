@@ -11,8 +11,8 @@
 11. [FIXED] Delivery and rendezvous do not work together at same node (improv)
 12. [FIXED] When going in a back and forth path, truck slows down. Then speeds up rapidly when next node is reached (improv)
 13. [FIXED] Same node operations do not count separately  (improv)
-14. Truck routing is done separately from time constraints
+14. [FIXED] Truck routing is done separately from time constraints
 15. UAV should have a different color w.r.t. the truck
 16. Operations do not necessarily occur in the order that is given by Murray
 17. Truck model is now simply a drone with another name
-18. Drone specs are not being loaded (vspeed, hspeed)
+18. [Partly fixed] Drone specs are not being loaded (vspeed, hspeed)

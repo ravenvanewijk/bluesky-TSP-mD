@@ -12,11 +12,18 @@ def init_plugin():
         'plugin_type':     'sim'
     }
     return config
- 
+
 
 class TDActWp(ActiveWaypoint):
     def __init__(self):
         super().__init__()
+        with self.settrafarrays():
+            self.idxnextrta  = np.array([], dtype = int)    # Index of next RTA waypoint in route
+
+    def create(self, n=1):
+        super().create(n)
+        # LNAV route navigation
+        self.idxnextrta[-n:]  = -999   # Index of next RTA waypoint in route
 
     # Overwrite reached function, should be more strict on reaching waypoints
     def reached(self, qdr, dist, flyby, flyturn, turnrad, turnhdgr, swlastwp):
@@ -55,10 +62,9 @@ class TDActWp(ActiveWaypoint):
         # Detect indices
         #swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,np.logical_or(dist < self.turndist,circling)))[0]
         dist_logical = dist < self.turndist
-        # MODIFIED W.R.T. ORIGINAL: TRUCK SHOULD ALWAYS HAVE SUFFICIENT DISTANCE LEFT TO MAKE THE TURN.
+        # # MODIFIED W.R.T. ORIGINAL: TRUCK SHOULD ALWAYS HAVE SUFFICIENT DISTANCE LEFT TO MAKE THE TURN.
         dist_logical = np.where(np.array(bs.traf.type) == 'TRUCK', False, dist_logical)
         swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,dist_logical))[0]
-
         # tooclose2turn
         # array([False])
         # Return indices for which condition is True/1.0 for a/c where we have reached waypoint

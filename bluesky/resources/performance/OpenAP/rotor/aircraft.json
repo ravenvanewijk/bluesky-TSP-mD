@@ -177,10 +177,78 @@
     "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
     "envelop": {
       "v_min": -18,
-      "v_max": 18,
+      "v_max": 50,
       "vs_min": -5,
       "vs_max": 5,
       "h_max": 0,
+      "d_range_max": 10
+    }
+  },
+  "M101": {
+    "name": "DJI Phantom 4_1",
+    "n_engines": 6,
+    "engine_type": "TS",
+    "mtow": 15.1,
+    "oew": 9.1,
+    "mfc": 0,
+    "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
+    "envelop": {
+      "v_min": -31.3,
+      "v_max": 31.3,
+      "vs_min": -7.8232,
+      "vs_max": 15.6464,
+      "h_max": 2500,
+      "d_range_max": 10
+    }
+  },
+  "M102": {
+    "name": "DJI Phantom 4_2",
+    "n_engines": 6,
+    "engine_type": "TS",
+    "mtow": 15.1,
+    "oew": 9.1,
+    "mfc": 0,
+    "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
+    "envelop": {
+      "v_min": -31.3,
+      "v_max": 31.3,
+      "vs_min": -7.8232,
+      "vs_max": 15.6464,
+      "h_max": 2500,
+      "d_range_max": 10
+    }
+  },
+  "M103": {
+    "name": "DJI Phantom 4_3",
+    "n_engines": 6,
+    "engine_type": "TS",
+    "mtow": 15.1,
+    "oew": 9.1,
+    "mfc": 0,
+    "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
+    "envelop": {
+      "v_min": -15.6464,
+      "v_max": 15.6464,
+      "vs_min": -3.9116,
+      "vs_max": 7.8232,
+      "h_max": 2500,
+      "d_range_max": 10
+    }
+  },
+  "M104": {
+    "name": "DJI Phantom 4_4",
+    "n_engines": 6,
+    "engine_type": "TS",
+    "mtow": 15.1,
+    "oew": 9.1,
+    "mfc": 0,
+    "engines": [["Motor-6010-1", 0.482], ["Motor-6010-2", 0.482], ["Motor-6010-3", 0.482], ["Motor-6010-4", 0.482], ["Motor-6010-5", 0.482], ["Motor-6010-6",0.482]],
+    "envelop": {
+      "v_min": -15.6464,
+      "v_max": 15.6464,
+      "vs_min": -3.9116,
+      "vs_max": 7.8232,
+      "h_max": 2500,
       "d_range_max": 10
     }
   }

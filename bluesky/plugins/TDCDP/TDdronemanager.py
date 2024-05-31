@@ -66,7 +66,6 @@ class DroneManager(Entity):
         - drone_name: str, name of the drone to be created"""
         data = self.active_drones[drone_name]
         stack.stack(f"ALT {drone_name} {data['alt']}")
-        stack.stack(f"{drone_name} ATALT {data['alt']} SPDAP {drone_name} {data['spd']}")
         scen_text = f"ADDTDWAYPOINTS {drone_name} "
         for wp in ['i', 'j', 'k']:
             if data['lon_k'] is None and wp == 'k':
@@ -75,8 +74,12 @@ class DroneManager(Entity):
             scen_text += f"{data['lat_' + wp]} {data['lon_' + wp]} {data['alt']} {data['spd']} TURNSPD 5 "
 
         stack.stack(scen_text)
-        stack.stack(f"LNAV {drone_name} ON")
-        stack.stack(f"VNAV {drone_name} ON")
+
+        drone_id = bs.traf.id.index(drone_name)
+        stack.stack(f"{drone_name} ATALT {data['alt']} SPDAP {drone_name} {data['spd']}")
+        stack.stack(f'ATALT {drone_name} {data["alt"]} LNAV {drone_name} ON')
+        stack.stack(f'ATALT {drone_name} {data["alt"]} VNAV {drone_name} ON')
+        
         # Add operation for the delivery
         stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_j']}/{data['lon_j']} DELIVERY {data['service_time']}")
         # Add operation for the rendezvous
