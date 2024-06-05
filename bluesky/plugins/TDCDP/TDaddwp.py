@@ -11,6 +11,8 @@ from bluesky import stack
 from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDdronemanager import DroneManager, get_wpname
 
+delivery_dist = 0.00025
+
 def init_plugin():
     # Configuration parameters
     config = {
@@ -48,7 +50,7 @@ class Operations(Entity):
             if hasattr(acrte, 'operation_wp') and iactwp > -1:
                 _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
                 # when distance is neglible, set SPD to 0 manually and start delivery process
-                if acrte.operation_wp[iactwp] and actdist < 0.00025 and acid not in self.operational_states:
+                if acrte.operation_wp[iactwp] and actdist < delivery_dist and acid not in self.operational_states:
                     self.commence_operation(acrte, acidx, acid, iactwp)
                     
                 # check whether an operation is active, or start timer when vehicle is stationary at ALT and SPD 0
@@ -89,7 +91,7 @@ class Operations(Entity):
                                 }
 
     def handle_operation(self, acrte, acidx, acid, iactwp):
-        """Handle the situation accordingly by declining (optional), waiting and performing situational tasks.
+        """Handle the situation accordingly by descending (optional), waiting and performing situational tasks.
         e.g. waiting for drone rendezvous at location."""
         # AC is marked to make a delivery. Start the timer for the first time the altitude and speed are 0
         # At that time, the operation timer starts

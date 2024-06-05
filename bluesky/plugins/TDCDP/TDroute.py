@@ -287,7 +287,7 @@ class TDRoute(Route):
             stack.stack("DELAY " + "42 " + "DEL " + str(self.acid))
 
             swlastwp = (self.iactwp == self.nwp - 1)
-            print(f'printing from getnextwp: current wp is {self.iactwp}')
+            # print(f'printing from getnextwp: current wp is {self.iactwp}')
             return self.wplat[self.iactwp],self.wplon[self.iactwp],   \
                            self.wpalt[self.iactwp],self.wpspd[self.iactwp],   \
                            self.wpxtoalt[self.iactwp],self.wptoalt[self.iactwp], \
@@ -295,7 +295,7 @@ class TDRoute(Route):
                            lnavon,self.wpflyby[self.iactwp], \
                            self.wpflyturn[self.iactwp],self.wpturnrad[self.iactwp], \
                            self.wpturnspd[self.iactwp], self.wpturnhdgr[self.iactwp], \
-                           nextqdr, swlastwp
+                           nextqdr, swlastwp, self.operation_wp[self.iactwp]
 
         # Switch LNAV off when last waypoint has been passed
         lnavon = self.iactwp < self.nwp -1
@@ -336,7 +336,7 @@ class TDRoute(Route):
                lnavon,self.wpflyby[self.iactwp], \
                self.wpflyturn[self.iactwp], self.wpturnrad[self.iactwp], \
                self.wpturnspd[self.iactwp], self.wpturnhdgr[self.iactwp],\
-               nextqdr, swlastwp
+               nextqdr, swlastwp, self.operation_wp[self.iactwp]
 
     @stack.command(name='TDRTAs')
     @staticmethod

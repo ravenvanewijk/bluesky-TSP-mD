@@ -71,7 +71,7 @@ class DroneManager(Entity):
             if data['lon_k'] is None and wp == 'k':
                 # This means coordinates are given but embedded in the wpname
                 data['lat_k'], data['lon_k'] = data['wpname_k'].split('/')
-            scen_text += f"{data['lat_' + wp]} {data['lon_' + wp]} {data['alt']} {data['spd']} TURNSPD 5 "
+            scen_text += f"{data['lat_' + wp]} {data['lon_' + wp]} {data['alt']} {data['spd']} TURNSPD 3 "
 
         stack.stack(scen_text)
 

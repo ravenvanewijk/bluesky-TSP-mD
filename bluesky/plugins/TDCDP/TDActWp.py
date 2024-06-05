@@ -2,6 +2,7 @@ from bluesky.traffic import ActiveWaypoint
 from bluesky.tools.misc import degto180
 from bluesky.tools.aero import g0
 from bluesky.traffic import Route
+from bluesky.plugins.TDCDP.TDaddwp import delivery_dist
 import numpy as np
 import bluesky as bs
 
@@ -19,14 +20,16 @@ class TDActWp(ActiveWaypoint):
         super().__init__()
         with self.settrafarrays():
             self.idxnextrta  = np.array([], dtype = int)    # Index of next RTA waypoint in route
+            self.operation   = np.array([], dtype = bool)   # Operation point, y/n
 
     def create(self, n=1):
         super().create(n)
         # LNAV route navigation
         self.idxnextrta[-n:]  = -999   # Index of next RTA waypoint in route
+        self.operation[-n:]   = False  # False by default
 
     # Overwrite reached function, should be more strict on reaching waypoints
-    def reached(self, qdr, dist, flyby, flyturn, turnrad, turnhdgr, swlastwp):
+    def reached(self, qdr, dist, flyby, flyturn, turnrad, turnhdgr, swlastwp, operation):
         # Calculate distance before waypoint where to start the turn
         # Note: this is a vectorized function, called with numpy traffic arrays
         # It returns the indices where the Reached criterion is True
@@ -37,7 +40,8 @@ class TDActWp(ActiveWaypoint):
         # First calculate turn distance
         next_qdr = np.where(self.next_qdr < -900., qdr, self.next_qdr)
         turntas = np.where(self.turnspd<0.0,bs.traf.tas,self.turnspd)
-        flybyturndist,turnrad = self.calcturn_vec(turntas,bs.traf.ap.bankdef,qdr,next_qdr,turnrad,turnhdgr,flyturn)
+        flybyturndist,turnrad = self.calcturn_vec(turntas,bs.traf.ap.bankdef,\
+                                qdr,next_qdr,operation,turnrad,turnhdgr,flyturn)
 
         # Turb dist iz ero for flyover, calculated distance for others
         self.turndist = np.logical_or(flyby,flyturn)*flybyturndist
@@ -72,7 +76,7 @@ class TDActWp(ActiveWaypoint):
 
 
     # Calculate turn distance for array or scalar
-    def calcturn_vec(self,tas,bank,wpqdr,next_wpqdr,turnrad=-999.,turnhdgr = -999.,flyturn=False):
+    def calcturn_vec(self,tas,bank,wpqdr,next_wpqdr,operation,turnrad=-999.,turnhdgr = -999.,flyturn=False):
         """Calculate distance to wp where to start turn and turn radius in meters"""
 
         # Tas is also used ti
@@ -109,6 +113,12 @@ class TDActWp(ActiveWaypoint):
             conditions,
             np.abs(turnrad * np.tan(np.radians(0.5 * np.abs(degto180(wpqdr % 360 - (next_wpqdr - 45) % 360))))),
             np.abs(turnrad * np.tan(np.radians(0.5 * angle_diff)))
+        )
+        # Check for operation, if operation --> closer to wp
+        turndist = np.where(
+            operation,
+            delivery_dist,
+            turndist
         )
         return turndist,turnrad
 

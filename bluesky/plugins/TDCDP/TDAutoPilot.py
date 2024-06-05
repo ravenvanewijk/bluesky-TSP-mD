@@ -43,7 +43,8 @@ class TDAutoPilot(Autopilot):
         # This vectorized function checks the passing of the waypoint using a.o. the current turn radius
         self.idxreached = bs.traf.actwp.reached(qdr, dist, bs.traf.actwp.flyby,
                                        bs.traf.actwp.flyturn,bs.traf.actwp.turnrad,
-                                       bs.traf.actwp.turnhdgr,bs.traf.actwp.swlastwp)
+                                       bs.traf.actwp.turnhdgr,bs.traf.actwp.swlastwp,
+                                       bs.traf.actwp.operation)
 
         # For the one who have reached their active waypoint, update vectorized leg data for guidance
         for i in self.idxreached:
@@ -70,7 +71,8 @@ class TDAutoPilot(Autopilot):
                 bs.traf.actwp.xtoalt[i], toalt, \
                     bs.traf.actwp.idxnextrta[i], bs.traf.actwp.torta[i], \
                     lnavon, flyby, flyturn, turnrad, turnspd, turnhdgr,\
-                    bs.traf.actwp.next_qdr[i], bs.traf.actwp.swlastwp[i]\
+                    bs.traf.actwp.next_qdr[i], bs.traf.actwp.swlastwp[i],\
+                    bs.traf.actwp.operation[i]\
                     = self.route[i].getnextwp()  # [m] note: xtoalt,nextaltco are in meters
 
 
