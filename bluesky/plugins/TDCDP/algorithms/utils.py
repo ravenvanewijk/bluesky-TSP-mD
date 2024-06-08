@@ -94,23 +94,86 @@ def gen_clusters(M, custlocs):
     CCK = KMeansConstrained(size_min=1,size_max=M+1,random_state=0)
     return CCK.fit_predict(custlocs), CCK.cluster_centers_
 
-def get_nearest_cluster(clusters, curloc):
+def get_nearest(items, cur_pos, type):
     nearest_dist = np.inf
     idx = np.inf
-    for cluster in clusters:
-        _, dist = qdrdist(cluster.centroid[0], cluster.centroid[1], curloc[0], curloc[1])
+    for item in items:
+        if type == 'cluster':
+            p1, p2 = item.centroid[0], item.centroid[1]
+        elif type == 'customer':
+            p1, p2 = item.location[0], item.location[1]
+        _, dist = qdrdist(p1, p2, cur_pos[0], cur_pos[1])
         if dist == 0:
-            # iif clusters equal eachother, continue
+            # iif items equal eachother, continue
             continue
         elif dist < nearest_dist:
             nearest_dist = dist
-            idx = cluster.id
+            idx = item.id
     return idx
+
+def divide_custs(customers, cur_pos, next_cluster_centroid, mandatory_truck_custs=2):
+    cust_copy = customers[:]
+
+    TO_custs = [customer for customer in cust_copy if not customer.drone_eligible]
+    for cust in TO_custs:
+        cust_copy.remove(cust)
+    
+    truckcusts = []
+    dronecusts = []
+    if len(TO_custs) > 0:
+        truckcusts.extend(TO_custs)
+    
+    # Find the closest customer to the next cluster centroid for entry
+    if len(cust_copy) > 0:
+        entry_customer = min(cust_copy, key=lambda c: euclidean_distance(cur_pos, c.location))
+        truckcusts.append(entry_customer)
+        cust_copy.remove(entry_customer)
+        
+    # Find the closest customer to the next cluster centroid for exit
+    if len(cust_copy) > 0:
+        exit_customer = min(cust_copy, key=lambda c: euclidean_distance(next_cluster_centroid, c.location))
+        truckcusts.append(exit_customer)
+        cust_copy.remove(exit_customer)
+
+    if len(truckcusts) == mandatory_truck_custs + 1:
+        # select the one that deviates less when compared to the original selected points for the truck.
+        added_entry_dist = euclidean_distance(cur_pos, TO_custs[0].location) - \
+                            euclidean_distance(cur_pos, entry_customer.location) 
+        added_exit_dist = euclidean_distance(next_cluster_centroid, TO_custs[0].location) - \
+                            euclidean_distance(next_cluster_centroid, exit_customer.location)
+
+        if added_entry_dist > added_exit_dist:
+            # TO customer becomes the exit customer
+            cust_copy.append(exit_customer)
+            truckcusts.remove(exit_customer)
+            # Required to reverse now, to get the right order of customers
+            truckcusts.reverse()
+        else:
+            # TO customer becomes the entry customer
+            cust_copy(entry_customer)
+            truckcusts.remove(entry_customer)
+
+    elif len(truckcusts) > mandatory_truck_custs + 1:
+        for cust in truckcusts:
+            if cust.drone_eligible:
+                cust_copy.append(cust)
+                truckcusts.remove(cust)
+
+    dronecusts.extend(cust_copy)
+    cust_copy.clear()
+
+
+    return truckcusts, dronecusts 
+
+
+def euclidean_distance(p1, p2):
+    # return np.sqrt(np.sum((np.array(p1) - np.array(p2))**2))
+    return math.sqrt((p1[0]-p2[0])**2 + (p1[1] - p2[1])**2)
 
 def plot_custlocs(custlocs, G, cluster = None):
     # Extract latitudes and longitudes
-    latitudes = custlocs[:, 0].astype(float)
-    longitudes = custlocs[:, 1].astype(float)
+    latitudes = [location[0] for location in custlocs]
+    longitudes = [location[1] for location in custlocs]
 
     # Plot the osmnx graph
     fig, ax = ox.plot_graph(G, show=False, close=False)
@@ -122,8 +185,9 @@ def plot_custlocs(custlocs, G, cluster = None):
         norm = colors.Normalize(vmin=0, vmax=len(unique_clusters) - 1)
 
         for cluster_id in unique_clusters:
-            indices = np.where(cluster == cluster_id)
-            ax.scatter(longitudes[indices], latitudes[indices], 
+            indices = np.where(cluster == cluster_id)[0]
+            ax.scatter([longitudes[i] for i in indices], 
+                        [latitudes[i] for i in indices], 
                        c=np.array([cmap(norm(cluster_id))]), 
                        marker='o', s=50, label=f'Cluster {cluster_id}')
     else:

@@ -2,15 +2,19 @@ import bluesky as bs
 import numpy as np
 import osmnx as ox
 import taxicab as tc
+import random
 from bluesky import stack
 from bluesky.core import Entity, timed_function
 from bluesky.plugins.TDCDP.algorithms.utils import get_map_lims,\
                                                 simplify_graph,\
                                                 plot_custlocs,\
                                                 gen_clusters,\
-                                                get_nearest_cluster
+                                                get_nearest,\
+                                                divide_custs
 from bluesky.plugins.TDCDP.algorithms.customer import Customer, Cluster
 from geopy.distance import great_circle
+from bluesky.plugins.TDCDP.algorithms.set_partitioning.set_partitioning import\
+                                                            SP_GA
 # from bluesky.tools.geo import qdrdist
 
 def init_plugin():
@@ -70,11 +74,11 @@ class ReactiveRoute(Entity):
         self.G = ox.graph_from_bbox(bbox=lims, network_type='drive')
         # Simplify the graph using osmnx
         self.G = simplify_graph(self.G)
-        self.gen_distance_matrix()
-        cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
+        # cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
+        cluster_ids, cluster_centers, _ = SP_GA(self.custlocs, 4, 100)
         self.clusters = []
         for i in range(len(cluster_centers)):
-            custids = np.where(cluster_ids==0)[0]
+            custids = np.where(np.array(cluster_ids)==i)[0]
             clust_custs = [customer for customer in self.customers if customer.id in custids]
             self.clusters.append(Cluster(i, cluster_centers[i], clust_custs))
         # hdg, _ = qdrdist(float(data['lat_i']), float(data['lon_i']), float(data['lat_j']), float(data['lon_j']))
@@ -83,20 +87,9 @@ class ReactiveRoute(Entity):
     @timed_function(dt = bs.sim.simdt)
     def determine_route(self):
         """Go to nearest cluster and route the truck and drones"""
-        nearest_cluster = get_nearest_cluster(self.clusters, (bs.traf.lat[0], bs.traf.lon[0]))
-        next_nearest_cluster = get_nearest_cluster(self.clusters, self.clusters[7].centroid)
+        cur_pos = (bs.traf.lat[0], bs.traf.lon[0])
+        nearest_cluster = get_nearest(self.clusters, cur_pos, 'cluster')
+        next_nearest_cluster = get_nearest(self.clusters, self.clusters[nearest_cluster].centroid, 'cluster')
 
-    def gen_distance_matrix(self):
-        """Get distance matrix from every i to every j"""
-        num_locations = len(self.custlocs)
-        self.distance_matrix = np.zeros((num_locations, num_locations))
-        
-        for i in range(num_locations):
-            for j in range(num_locations):
-                if i == j:
-                    continue
-                lat1, lon1 = self.custlocs[i]
-                lat2, lon2 = self.custlocs[j]
-                self.distance_matrix[i, j] = great_circle((lat1, lon1), 
-                                                        (lat2, lon2)).meters
-            
+        truck_custs, drone_custs = divide_custs(self.clusters[random.randint(0,len(self.clusters))].customers, cur_pos, 
+                                                self.clusters[next_nearest_cluster].centroid)
