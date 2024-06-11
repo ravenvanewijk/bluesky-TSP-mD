@@ -2,7 +2,7 @@ from bluesky.traffic import ActiveWaypoint
 from bluesky.tools.misc import degto180
 from bluesky.tools.aero import g0
 from bluesky.traffic import Route
-from bluesky.plugins.TDCDP.TDaddwp import delivery_dist
+from bluesky.plugins.TDCDP.TDoperations import delivery_dist
 import numpy as np
 import bluesky as bs
 

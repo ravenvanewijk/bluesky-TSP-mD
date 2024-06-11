@@ -118,14 +118,14 @@ def get_nearest(items, cur_pos, type):
 def divide_and_order(customers, cur_pos, next_cluster_centroid):
     cust_copy = customers[:]
     TO_custs = [customer for customer in cust_copy if not customer.drone_eligible]
-    truckcusts = []
+    truck_custs = []
     dronecusts = []
 
     if len(cust_copy) == 1:
         # CASE NUMBER 1: 
         # only 1 customer, serve with truck
-        truckcusts = cust_copy
-        return truckcusts, dronecusts
+        truck_custs = cust_copy
+        return truck_custs, dronecusts
     
     elif len(cust_copy) == 2:
         # CASE NUMBER 2:
@@ -134,14 +134,14 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
         C1_dist = euclidean_distance(cur_pos, cust_copy[0].location)
         C2_dist = euclidean_distance(cur_pos, cust_copy[1].location)
 
-        truckcusts = cust_copy
+        truck_custs = cust_copy
         if C1_dist > C2_dist:
             # Closer to customer number 2 than to customer number 1
             # Go to customer 2 first, then to 1
             # This means swapping their positions around
-            truckcusts.reverse()
+            truck_custs.reverse()
         
-        return truckcusts, dronecusts
+        return truck_custs, dronecusts
     
     elif len(cust_copy) >= 3:
         if len(TO_custs) >= 3:
@@ -149,7 +149,7 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
             # 3 or more customers, 3 or more truck only (rare)
             # Go to nearest one first
             entry_cust = min(cust_copy, key=lambda c: euclidean_distance(cur_pos, c.location))
-            truckcusts.append(entry_cust)
+            truck_custs.append(entry_cust)
             cust_copy.remove(entry_cust)
             # Then go to the one with max distance to next cluster, such we can exit close to nearest next cluster
             exit_cust = min(cust_copy, key=lambda c: euclidean_distance(next_cluster_centroid, c.location))
@@ -162,42 +162,42 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
                 # update cust_i
                 cust_i = next_cust
                 cust_copy.remove(cust_i)
-                truckcusts.append(cust_i)
+                truck_custs.append(cust_i)
 
             # append the exit customer such that it is the last one
-            truckcusts.append(exit_cust)
-            return truckcusts, dronecusts
+            truck_custs.append(exit_cust)
+            return truck_custs, dronecusts
         
         elif len(TO_custs) == 2:
             # CASE NUMBER 3.2:
             # 3 or more customers, of which 2 are truck only
             # Determine which one is exit and entry, the remaining cust is a drone cust
-            truckcusts = TO_custs
+            truck_custs = TO_custs
             for cust in TO_custs:
                 cust_copy.remove(cust)
             dronecusts = cust_copy
 
             # distance difference between current position dist and next cluster centroid dist
-            dist_diff_c1 = euclidean_distance(cur_pos, truckcusts[0].location) - \
-                            euclidean_distance(next_cluster_centroid, truckcusts[0].location)
-            dist_diff_c2 = euclidean_distance(cur_pos, truckcusts[1].location) - \
-                            euclidean_distance(next_cluster_centroid, truckcusts[1].location)
+            dist_diff_c1 = euclidean_distance(cur_pos, truck_custs[0].location) - \
+                            euclidean_distance(next_cluster_centroid, truck_custs[0].location)
+            dist_diff_c2 = euclidean_distance(cur_pos, truck_custs[1].location) - \
+                            euclidean_distance(next_cluster_centroid, truck_custs[1].location)
 
             # If the distance difference of first one is larger, this indicates it is wise to swap them
             if dist_diff_c1 > dist_diff_c2:
-                truckcusts.reverse()
+                truck_custs.reverse()
 
-            return truckcusts, dronecusts
+            return truck_custs, dronecusts
 
         elif len(TO_custs) == 1:
             # CASE NUMBER 3.3:
             # 3 or more customers, of which 1 is a mandatory truck only
-            truckcusts = TO_custs
+            truck_custs = TO_custs
 
             exit_cust  = min(cust_copy, key=lambda c: euclidean_distance(next_cluster_centroid, c.location))
             entry_cust = min(cust_copy, key=lambda c: euclidean_distance(cur_pos, c.location))
 
-            if truckcusts[0] != exit_cust and truckcusts[0] != entry_cust:
+            if truck_custs[0] != exit_cust and truck_custs[0] != entry_cust:
                 # Truck only delivery is neither the optimal entry or exit point
                 # Replace the one that deviates less when compared to the original selected points for the truck.
                 added_entry_dist = euclidean_distance(cur_pos, TO_custs[0].location) - \
@@ -207,20 +207,20 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
 
                 if added_entry_dist > added_exit_dist:
                     # TO customer is the exit customer
-                    truckcusts.append(entry_cust)
-                    truckcusts.reverse()
+                    truck_custs.append(entry_cust)
+                    truck_custs.reverse()
                 else:
                     # TO customer is the entry customer
-                    truckcusts.append(exit_cust)
+                    truck_custs.append(exit_cust)
 
-            elif truckcusts[0] == entry_cust:
-                truckcusts.append(exit_cust)
+            elif truck_custs[0] == entry_cust:
+                truck_custs.append(exit_cust)
 
-            elif truckcusts[0] == exit_cust:
-                truckcusts.append(entry_cust)
-                truckcusts.reverse()
+            elif truck_custs[0] == exit_cust:
+                truck_custs.append(entry_cust)
+                truck_custs.reverse()
 
-            for cust in truckcusts:
+            for cust in truck_custs:
                 cust_copy.remove(cust)
 
             # Remaining customer is drone customer
@@ -231,18 +231,18 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
             # 3 or more customers, of which no truck only customers
             # Assign entry and exit customers regularly
             entry_cust = min(cust_copy, key=lambda c: euclidean_distance(cur_pos, c.location))
-            truckcusts.append(entry_cust)
+            truck_custs.append(entry_cust)
             cust_copy.remove(entry_cust)
             # Then go to the one with max distance to next cluster, such we can exit close to nearest next cluster
             exit_cust = min(cust_copy, key=lambda c: euclidean_distance(next_cluster_centroid, c.location))
-            truckcusts.append(exit_cust)
+            truck_custs.append(exit_cust)
             cust_copy.remove(exit_cust)
             # Now append the final customers to the dronecusts
             dronecusts = cust_copy
             
-            return truckcusts, dronecusts
+            return truck_custs, dronecusts
 
-    return truckcusts, dronecusts
+    return truck_custs, dronecusts
     
             
 def euclidean_distance(p1, p2):

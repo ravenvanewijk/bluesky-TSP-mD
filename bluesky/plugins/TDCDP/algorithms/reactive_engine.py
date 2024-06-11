@@ -92,10 +92,16 @@ class ReactiveRoute(Entity):
         stack.stack(f'PAN {self.truckname}')
         stack.stack('ZOOM 50')
 
+        #_____________PARAMS_____________
+        self.delivery_time = 30
+        self.sortie_time = 60
+        self.rendezvous_time = 60
+        self.vehicle_group = vehicle_group
+
         # Keep track of whether routing is done or not
         self.routing_done = False
 
-    @timed_function(dt = bs.sim.simdt)
+    @timed_function(dt = bs.sim.simdt * 5)
     def determine_route(self):
         if self.routing_done:
             return
@@ -113,9 +119,8 @@ class ReactiveRoute(Entity):
                 # When it is the last routepart, return
                 # Routing is done so we can stop adding route parts
                 road_back = self.roadroute((acrte.wplat[-1], acrte.wplon[-1]), (acrte.wplat[0], acrte.wplon[0]))
-                wp_commands, operation_commands = self.construct_scenario(road_back)
+                wp_commands = self.construct_scenario(road_back)
                 stack.stack(wp_commands)
-                stack.stack(operation_commands)
                 destination_tolerance = 3/1852
                 stack.stack(f"{self.truckname} ATDIST {road_back.xy[1][-1]} {road_back.xy[0][-1]} \
                                 {destination_tolerance} TRKDEL {self.truckname}")
@@ -151,9 +156,12 @@ class ReactiveRoute(Entity):
             road_route = self.roadroute(cur_pos, truckcust.location)
             # update current position for next customer part
             cur_pos = truckcust.location
-            wp_commands, operation_commands = self.construct_scenario(road_route)
+            wp_commands = self.construct_scenario(road_route)
             stack.stack(wp_commands)
-            stack.stack(operation_commands)
+
+        operation_commands = self.construct_operations(truck_custs, drone_custs)
+        for operation in operation_commands:
+            stack.stack(operation)
 
     def roadroute(self, A, B):
         route = []
@@ -256,10 +264,6 @@ class ReactiveRoute(Entity):
         # Initiate adddtwaypoints command
         scen_text += f'ADDTDWAYPOINTS {self.truckname}' # First add the root of the command
         # Loop through waypoints
-        # Refresh command after 100 iterations, BlueSky cannot handle everything in one go
-        i = 0
-        j = 0
-        self.scn_lim = 400
         for wplat, wplon, turn in zip(route_lats, route_lons, turns):
             # Check if this waypoint is a turn
             if turn == 'turn' or turn == 'sharpturn':
@@ -270,15 +274,25 @@ class ReactiveRoute(Entity):
                 # Doesn't matter what we pick here, as long as it is assigned. 
                 # Will be ignored
                 wp_turnspd = turn_spd
-            if i > self.scn_lim:
-                j += 1
-                scen_text += f'ADDTDWAYPOINTS {self.truckname}'
-                i = 0
-            i += 1
             # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
             scen_text += f',{wplat},{wplon},{cruise_alt},25,{wptype},{wp_turnspd}'
 
-        delivery_text = f"ADDOPERATIONPOINTS {self.truckname} {route_lats[-1]}/{route_lons[-1]} DELIVERY 30"
+        # delivery_text = f"ADDOPERATIONPOINTS {self.truckname} {route_lats[-1]}/{route_lons[-1]} DELIVERY 30"
+        return scen_text
 
-        return scen_text, delivery_text
+    def construct_operations(self, truck_custs, drone_custs):
+        operation_text = []
+        for truck_cust in truck_custs:
+            operation_text.append(f"ADDOPERATIONPOINTS {self.truckname} {truck_cust.location[0]}/{truck_cust.location[1]} \
+                                DELIVERY {self.delivery_time}")
+        
+        for i, drone_cust in enumerate(drone_custs):
+            operation_text.append(f"ADDOPERATIONPOINTS {self.truckname}, \
+                                {truck_custs[0].location[0]}/{truck_custs[0].location[1]}, \
+                                SORTIE, {self.sortie_time}, M{self.vehicle_group}, {i + 1}, \
+                                {drone_cust.location[0]}, {drone_cust.location[1]}, \
+                                {truck_custs[-1].location[0]}/{truck_custs[-1].location[1]}, \
+                                164.04199475065616, 60.828336856672 60, 30")
+
+        return operation_text

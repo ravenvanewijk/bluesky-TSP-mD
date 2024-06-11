@@ -38,7 +38,7 @@ class TDRoute(Route):
 
         # Add operational attributes of waypoint(s)
         acrte.operation_wp.extend(wpcount * [False])
-        acrte.operation_duration.extend(wpcount * [None])
+        acrte.operation_duration.extend(wpcount * [[None]])
         acrte.children.extend(wpcount * [[None]])
         acrte.op_type.extend(wpcount * [None])
 
@@ -90,7 +90,11 @@ class TDRoute(Route):
 
         # modify operational attributes of the wp
         acrte.operation_wp[wpid] = True
-        acrte.operation_duration[wpid] = float(duration)
+        if acrte.operation_duration[wpid][0] is None:
+            acrte.operation_duration[wpid] = [float(duration)]
+        else:
+            acrte.operation_duration[wpid].extend([float(duration)])
+            
         if acrte.op_type[wpid] is None:
             acrte.op_type[wpid] = [wptype]
         else:
@@ -106,10 +110,15 @@ class TDRoute(Route):
                 wpname_k = args[3]
 
             wpid_k = acrte.wpname.index(wpname_k.upper())
-            # truck, type, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k, wpname_k, alt, spd
-            child = bs.traf.Operations.drone_manager.add_drone(vehicleid, args[0], args[1], acrte.wplat[wpid], acrte.wplon[wpid], 
-                                                    args[2], args[3], acrte.wplat[wpid_k], acrte.wplon[wpid_k], 
-                                                    wpname_k, args[5], args[6], args[7], args[8])
+            # truck, type, UAVnumber, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k,
+            # wpname_k, alt, spd, servicetime, retrievaltime
+            child = bs.traf.Operations.drone_manager.add_drone(vehicleid, 
+                                        args[0], args[1], acrte.wplat[wpid], 
+                                        acrte.wplon[wpid],args[2], args[3], 
+                                        acrte.wplat[wpid_k], 
+                                        acrte.wplon[wpid_k], 
+                                        wpname_k, args[5], args[6], 
+                                        args[7], args[8])
 
             if acrte.children[wpid][0] is None:
                 acrte.children[wpid] = [child]

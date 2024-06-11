@@ -1,4 +1,4 @@
-"""Plugin to enable modified delivery waypoints."""
+"""Plugin to enable modified operation waypoints."""
 import bluesky as bs
 import numpy as np
 import random
@@ -49,7 +49,7 @@ class Operations(Entity):
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'operation_wp') and iactwp > -1:
                 _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
-                # when distance is neglible, set SPD to 0 manually and start delivery process
+                # when distance is neglible, set SPD to 0 manually and start operation process
                 if acrte.operation_wp[iactwp] and actdist < delivery_dist and acid not in self.operational_states:
                     self.commence_operation(acrte, acidx, acid, iactwp)
                     
@@ -68,6 +68,7 @@ class Operations(Entity):
         # Track operational status, useful to discover if all operations have finished
         op_status = len(op_type) * [False]
         t0 = len(op_type) * [np.inf]
+        op_duration = acrte.operation_duration[iactwp]
         # get children at this node to add to the operational states
         children = []
         i = 0
@@ -85,6 +86,7 @@ class Operations(Entity):
                                 'wp_index': iactwp, # Current waypoint where the operation(s) are/is taking place
                                 'op_type': op_type, # List of types of all operations at wp: sortie/deliv/rendezv.
                                 'op_status': op_status, # List of status of all operations, True if completed
+                                'op_duration': op_duration, # List of operation durations
                                 'children': children, # Child drones of operations that are taking place
                                 't0': t0, # Start time of operation. Keeps track of all operations individually
                                 'busy': False # Non vectorized variable. Keeps track if an operation is in progress
@@ -112,7 +114,7 @@ class Operations(Entity):
                         self.operational_states[acid]['t0'][idx] = bs.sim.simt
                         self.operational_states[acid]['busy'] = True
                     elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                acrte.operation_duration[self.operational_states[acid]['wp_index']]:
+                                self.operational_states[acid]['op_duration'][idx]:
                         # Delivery is just 'waiting': no additional tasks
                         self.operational_states[acid]['op_status'][idx] = True
                         self.operational_states[acid]['busy'] = False
@@ -123,7 +125,7 @@ class Operations(Entity):
                         self.operational_states[acid]['t0'][idx] = bs.sim.simt
                         self.operational_states[acid]['busy'] = True
                     elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                acrte.operation_duration[self.operational_states[acid]['wp_index']]:
+                                self.operational_states[acid]['op_duration'][idx]:
                         # Sortie means an AC is to be spawned and routed from the waypoint.
                         self.drone_manager.spawn_drone(self.operational_states[acid]['children'][idx])
                         self.drone_manager.route_drone(self.operational_states[acid]['children'][idx])
@@ -142,7 +144,7 @@ class Operations(Entity):
                             self.operational_states[acid]['t0'][idx] = bs.sim.simt
                             self.operational_states[acid]['busy'] = True
                         elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                acrte.operation_duration[self.operational_states[acid]['wp_index']]:
+                                self.operational_states[acid]['op_duration'][idx]:
                             self.drone_manager.retrieve_drone(
                                                     self.operational_states[acid]['children'][idx])
                             # Set operation status to True, meaning operation has finished
