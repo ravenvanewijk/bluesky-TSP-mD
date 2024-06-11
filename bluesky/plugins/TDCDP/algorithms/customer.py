@@ -44,7 +44,8 @@ class Cluster():
     """
     Class to represent a cluster instance.
     """
-    def __init__(self, id, centroid, customers):
+    def __init__(self, id, centroid, customers, served=False):
         self.id = id
         self.centroid = centroid
         self.customers = customers
+        self.served = served

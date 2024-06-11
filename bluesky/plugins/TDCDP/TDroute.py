@@ -217,7 +217,7 @@ class TDRoute(Route):
                     turnrad*abs(math.tan(0.5*math.radians(max(5., abs(degto180(qdr_ -
                     acrte.wpdirfrom[acrte.iactwp]))))))    # [nm]
 
-        if not acrte.operation_wp[acrte.iactwp]:
+        if not acrte.operation_wp[acrte.iactwp] or acrte.iactwp > 0:
             # If first point is not an operation point, turn on autopilot
             bs.traf.swlnav[acidx] = True
         else:
