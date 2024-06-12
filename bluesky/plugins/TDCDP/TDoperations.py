@@ -10,6 +10,7 @@ from bluesky.core import Entity, timed_function
 from bluesky import stack
 from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDdronemanager import DroneManager, get_wpname
+from bluesky.plugins.TDCDP.data_logger import DataLogger
 
 delivery_dist = 0.00025
 
@@ -32,11 +33,19 @@ class Operations(Entity):
         self.operational_states = {}
         self.drone_manager = DroneManager()
         self.trkdelqueue = []
+        self.data_logger = DataLogger()
+        self.custs_served = 0
     
     def reset(self):
         self.operational_states = {}
         self.drone_manager.reset()
         self.trkdelqueue = []
+        self.data_logger.shutdown()
+        self.custs_served = 0
+    
+    @stack.command(name='LOG')
+    def config_log(self, new_file_name=None, new_log_dir=None):
+        self.data_logger.change_log_file(new_file_name, new_log_dir)
 
     @timed_function(dt = bs.sim.simdt)
     def check_operation(self):
@@ -84,6 +93,7 @@ class Operations(Entity):
         # This data is stored individually for each node and will be re-initialized once the simulation progresses
         self.operational_states[acid] = {
                                 'wp_index': iactwp, # Current waypoint where the operation(s) are/is taking place
+                                'wp_coords': (acrte.wplat[iactwp], acrte.wplon[iactwp]), # Coords of the wp
                                 'op_type': op_type, # List of types of all operations at wp: sortie/deliv/rendezv.
                                 'op_status': op_status, # List of status of all operations, True if completed
                                 'op_duration': op_duration, # List of operation durations
@@ -109,28 +119,38 @@ class Operations(Entity):
                 if self.operational_states[acid]['op_status'][idx] == True:
                     # continue with next item if the operation is already done
                     continue
+                # Whether or not the timer can be started
+                # Only when not started yet and should not be busy with another operation
+                start_timer_check =  self.operational_states[acid]['t0'][idx] == np.inf \
+                                        and not self.operational_states[acid]['busy']
+                # Whether the operation timer has been completed or still in progress
+                op_timer_check = bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
+                                self.operational_states[acid]['op_duration'][idx]
+
                 if operation == 'DELIVERY':
-                    if self.operational_states[acid]['t0'][idx] == np.inf and not self.operational_states[acid]['busy']:
-                        self.operational_states[acid]['t0'][idx] = bs.sim.simt
-                        self.operational_states[acid]['busy'] = True
-                    elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                self.operational_states[acid]['op_duration'][idx]:
+                    if start_timer_check:
+                        self.start_timer(acid, idx)
+                    elif op_timer_check:
                         # Delivery is just 'waiting': no additional tasks
-                        self.operational_states[acid]['op_status'][idx] = True
-                        self.operational_states[acid]['busy'] = False
+                        self.mark_done(acid, idx)
+                        self.data_logger.log_customer_service(
+                                                self.operational_states[acid],
+                                                acid,
+                                                idx,
+                                                self.custs_served + 1
+                                                            )
+                        # Increment customers served by 1
+                        self.custs_served += 1
+
                 elif operation == 'SORTIE':
-                    if self.operational_states[acid]['t0'][idx] == np.inf and not \
-                                self.operational_states[acid]['busy'] and \
-                                self.drone_manager.drone_available(self.operational_states[acid]['children'][idx]):
-                        self.operational_states[acid]['t0'][idx] = bs.sim.simt
-                        self.operational_states[acid]['busy'] = True
-                    elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                self.operational_states[acid]['op_duration'][idx]:
-                        # Sortie means an AC is to be spawned and routed from the waypoint.
-                        self.drone_manager.spawn_drone(self.operational_states[acid]['children'][idx])
-                        self.drone_manager.route_drone(self.operational_states[acid]['children'][idx])
-                        self.operational_states[acid]['op_status'][idx] = True
-                        self.operational_states[acid]['busy'] = False
+                    drone_avail = self.drone_manager.drone_available(
+                                    self.operational_states[acid]['children'][idx]
+                                                                    )           
+                    if start_timer_check and drone_avail:
+                        self.start_timer(acid, idx)
+                    elif op_timer_check:
+                        self.perform_sortie(acid, idx)
+
                 elif operation == 'RENDEZVOUS':
                     # Rendezvous entails waiting for the child drone to arrive at the location, or vice versa
                     # If the vehicle is a drone, then change its status to hovering
@@ -139,22 +159,10 @@ class Operations(Entity):
                     # Check whether rendezvous can be performed/ completed
                     if self.drone_manager.check_rendezvous(
                                                 self.operational_states[acid]['children'][idx]):
-                        if self.operational_states[acid]['t0'][idx] == np.inf  and not\
-                                self.operational_states[acid]['busy']:
-                            self.operational_states[acid]['t0'][idx] = bs.sim.simt
-                            self.operational_states[acid]['busy'] = True
-                        elif bs.sim.simt - self.operational_states[acid]['t0'][idx] >= \
-                                self.operational_states[acid]['op_duration'][idx]:
-                            self.drone_manager.retrieve_drone(
-                                                    self.operational_states[acid]['children'][idx])
-                            # Set operation status to True, meaning operation has finished
-                            self.operational_states[acid]['op_status'][idx] = True
-                            # Remove child from operational states dict, operation is completed
-                            self.operational_states.pop(self.operational_states[acid]['children'][idx],
-                                                        None)
-                            # Remove operation waypoint of drone
-                            Route._routes[self.operational_states[acid]['children'][idx]].operation_wp[-1] = False
-                            self.operational_states[acid]['busy'] = False
+                        if start_timer_check:
+                            self.start_timer(acid, idx)
+                        elif op_timer_check:
+                                self.perform_rendezvous(acid, idx)
                         else:
                             continue
 
@@ -162,11 +170,38 @@ class Operations(Entity):
             if all(self.operational_states[acid]['op_status']):
                 # Do not complete the operation if its the last truck wp, then it tries to continue
                 if bs.traf.type[acidx] == 'TRUCK' and iactwp + 1 == len(acrte.wpname):
+                    # pop from operational states, operation is completed
                     self.operational_states.pop(acid, None)
                     return
-                self.complete_and_continue(acrte, acidx, acid, iactwp)
+                self.continue_en_route(acrte, acidx, acid, iactwp)
 
-    def complete_and_continue(self, acrte, acidx, acid, iactwp):
+    def start_timer(self, acid, idx):
+
+        # Start timer and set truck as 'busy'
+        self.operational_states[acid]['t0'][idx] = bs.sim.simt
+        self.operational_states[acid]['busy'] = True
+
+    def mark_done(self, acid, idx):
+        self.operational_states[acid]['op_status'][idx] = True
+        self.operational_states[acid]['busy'] = False
+
+    def perform_sortie(self, acid, idx):
+        # Sortie means an AC is to be spawned and routed from the waypoint.
+        self.drone_manager.spawn_drone(self.operational_states[acid]['children'][idx])
+        self.drone_manager.route_drone(self.operational_states[acid]['children'][idx])
+        self.mark_done(acid, idx)
+
+    def perform_rendezvous(self, acid, idx):
+        self.drone_manager.retrieve_drone(
+                        self.operational_states[acid]['children'][idx])
+        self.mark_done(acid, idx)
+        # Remove child from operational states dict, operation is completed
+        child = self.operational_states[acid]['children'][idx]
+        self.operational_states.pop(child, None)
+        # Remove operation waypoint of drone
+        Route._routes[self.operational_states[acid]['children'][idx]].operation_wp[-1] = False
+
+    def continue_en_route(self, acrte, acidx, acid, iactwp):
         """This function lets the vehicle continue on its route after succesfully completing its operation(s)."""
         wp_index = self.operational_states[acid]['wp_index']
         # only if the vehicle is not a truck, continue with ascend. Otherwise, directly accelerate
@@ -201,7 +236,9 @@ class Operations(Entity):
             bs.traf.ntraf = len(bs.traf.lat)
         else:
             self.trkdelqueue.append(idx)
-
+        
+        self.data_logger.log_data({'completion_time: ': bs.sim.simt})
+        self.data_logger.shutdown()
         return True
 
     @timed_function(dt = bs.sim.simdt)

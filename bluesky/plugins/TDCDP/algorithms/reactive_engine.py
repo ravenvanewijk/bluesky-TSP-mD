@@ -127,6 +127,7 @@ class ReactiveRoute(Entity):
                 # Add delivery point such that the truck stops at the end
                 stack.stack(f"ADDOPERATIONPOINTS {self.truckname} {road_back.xy[1][-1]}/{road_back.xy[0][-1]} DELIVERY 1")
                 stack.stack('OP')
+                stack.stack('FF')
                 self.routing_done = True
                 return
 
@@ -144,6 +145,7 @@ class ReactiveRoute(Entity):
             self.clusters[nearest_cluster].served = True
             self.addroute(cur_pos, truck_custs, drone_custs)
             stack.stack('OP')
+            stack.stack('FF')
             if first_clust:
                 stack.stack(f"SPDAP {self.truckname} 5")
                 stack.stack(f"{self.truckname} ATSPD 2 LNAV {self.truckname} ON")
