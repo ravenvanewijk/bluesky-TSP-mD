@@ -103,6 +103,8 @@ def get_nearest(items, cur_pos, type):
             p1, p2 = item.centroid[0], item.centroid[1]
         elif type == 'customer':
             p1, p2 = item.location[0], item.location[1]
+        else:
+            raise ValueError(f"Type {type} not accepted, select from 'customer' or 'cluster'")
         _, dist = qdrdist(p1, p2, cur_pos[0], cur_pos[1])
         if dist == 0:
             # iif items equal eachother, continue
@@ -197,7 +199,13 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
             exit_cust  = min(cust_copy, key=lambda c: euclidean_distance(next_cluster_centroid, c.location))
             entry_cust = min(cust_copy, key=lambda c: euclidean_distance(cur_pos, c.location))
 
-            if truck_custs[0] != exit_cust and truck_custs[0] != entry_cust:
+            if exit_cust == entry_cust == truck_custs[0]:
+                cust_copy.remove(exit_cust)
+                additional_truck_cust = min(cust_copy, key=lambda c: 
+                        euclidean_distance(exit_cust.location, c.location))
+                truck_custs.append(additional_truck_cust)
+
+            elif truck_custs[0] != exit_cust and truck_custs[0] != entry_cust:
                 # Truck only delivery is neither the optimal entry or exit point
                 # Replace the one that deviates less when compared to the original selected points for the truck.
                 added_entry_dist = euclidean_distance(cur_pos, TO_custs[0].location) - \
@@ -221,7 +229,10 @@ def divide_and_order(customers, cur_pos, next_cluster_centroid):
                 truck_custs.reverse()
 
             for cust in truck_custs:
-                cust_copy.remove(cust)
+                try:
+                    cust_copy.remove(cust)
+                except ValueError:
+                    continue
 
             # Remaining customer is drone customer
             dronecusts.append(cust_copy[0])

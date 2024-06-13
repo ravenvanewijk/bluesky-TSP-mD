@@ -13,6 +13,10 @@ from bluesky.plugins.TDCDP.algorithms.set_partitioning.funcs import \
                     calculate_centroids
 
 def initialize_population(population_size, customers):
+    """Begin the GA with an initial set of solutions, which randomly assigns customers to a cluster.
+    args: type, description
+        - population_size: int, number of solutions in each generation
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)"""
     population = []
     for _ in range(population_size):
         solution = [[] for _ in range(len(customers))]
@@ -23,6 +27,10 @@ def initialize_population(population_size, customers):
     return population
 
 def fitness(solution, customers):
+    """Evaluate the fitness of a given solution.
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)"""
     num_clusters = len([subset for subset in solution if len(subset) > 0])
     total_distance = 0
 
@@ -38,7 +46,15 @@ def fitness(solution, customers):
 
     return num_clusters + np.sqrt(total_distance)
 
-def unfitness(solution, customers, n_points, max_customers_per_subset, max_distance):
+def unfitness(solution, customers, max_customers_per_subset, max_distance):
+    """Evaluate the unfitness of a solution, which is based on the violation of constraints.
+    Constraints are the max number of customers in a subset, and the max distance between customers in a cluster.
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)
+        - max_customers_per_subset: int, max. nr. of custs per cluster
+        - max_distance: int/float, max. distance between two points in the same cluster
+    """
     penalty = 0
     cust_in_sol = set()
     for subset in solution:
@@ -49,15 +65,21 @@ def unfitness(solution, customers, n_points, max_customers_per_subset, max_dista
             for j in range(i + 1, len(subset)):
                 if euclidean_distance(customers[subset[i]], customers[subset[j]]) > max_distance:
                     penalty += 100
-    if not set(range(n_points)) == cust_in_sol:
+    if not set(range(len(customers))) == cust_in_sol:
         penalty += 100
     return penalty
 
-def uniform_crossover(parent1, parent2, n_points):
-    """Perform uniform crossover between two parents to produce two children."""
+def uniform_crossover(parent1, parent2, n_custs):
+    """Perform uniform crossover between two parents to produce two children. 
+    The child inherits both characteristics of the first and second parent.
+    args: type, description
+        - parent1: list of lists, solution representing allocations of the customers
+        - parent2: list of lists, solution representing allocations of the customers
+        - n_custs: int, number of customers to be partitioned
+    """
     # Flatten the parent solutions to work with customer assignments directly
-    flat_parent1 = flatten_solution(parent1, n_points)
-    flat_parent2 = flatten_solution(parent2, n_points)
+    flat_parent1 = flatten_solution(parent1, n_custs)
+    flat_parent2 = flatten_solution(parent2, n_custs)
 
     flat_child1 = []
     flat_child2 = []
@@ -84,21 +106,35 @@ def uniform_crossover(parent1, parent2, n_points):
 
 
 def select_parents(population, customers, max_customers_per_subset, max_distance, tournament_size=10):
+    """Select the two parents that will get children.
+    args: type, description
+        - population_size: int, number of solutions in each generation
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)
+        - max_customers_per_subset: int, max. nr. of custs per cluster
+        - max_distance: int/float, max. distance between two points in the same cluster
+        - tournament_size: selected number of candidates to pick from
+    """
     # First parent selection by binary tournament
-    parent1 = tournament_selection(population, customers, tournament_size, \
-                                   len(customers), max_customers_per_subset, \
-                                    max_distance)[0]
+    parent1 = tournament_selection(population, customers, tournament_size, 
+                                max_customers_per_subset, max_distance)[0]
     # Second parent selection by compatibility score
     candidate_parents = [sol for sol in population if sol != parent1]
     # parent2 = max(candidate_parents, key=lambda sol: (compatibility_score(parent1, sol), -fitness(sol)))
     parent2 = tournament_selection(population, customers, tournament_size, \
-                                   len(customers), max_customers_per_subset, \
-                                    max_distance)[0]
+                                   max_customers_per_subset, max_distance)[0]
 
     return parent1, parent2
 
-def tournament_selection(population, customers, tournament_size, n_points, \
+def tournament_selection(population, customers, tournament_size, \
                          max_customers_per_subset, max_distance, n_best=1):
+    """Perform a tournament selection based on the performance of a solution in terms of its fitness and unfitness
+    args: type, description
+        - population_size: int, number of solutions in each generation
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)
+        - tournament_size: selected number of candidates to pick from
+        - max_customers_per_subset: int, max. nr. of custs per cluster
+        - max_distance: int/float, max. distance between two points in the same cluster
+    """
     # Make a copy of the population to avoid modifying the original list
     population_copy = population[:]
     selected_individuals = []
@@ -106,7 +142,7 @@ def tournament_selection(population, customers, tournament_size, n_points, \
     for i in range(n_best):
         tournament = random.sample(population_copy, tournament_size - i)
         best_individual = min(tournament, key=lambda sol: \
-                            (unfitness(sol, customers, n_points, max_customers_per_subset, max_distance), \
+                            (unfitness(sol, customers, max_customers_per_subset, max_distance), \
                             fitness(sol, customers)))
         selected_individuals.append(best_individual)
         population_copy.remove(best_individual)  # Remove from the copy, not the original
@@ -128,13 +164,25 @@ def compatibility_score(parent1, candidate):
 def SP_GA(customers, max_customers_per_subset, max_distance,
                         generations=200, mutation_rate=0.2,\
                         population_size=100, p_elitism=0.02):
+    """Run the genetic algorithm to perform set partitioning. 
+    The goal of the algorithm is to divide a given set of customers into clusters of a max size, 
+    with max inbetween distance. The focus is mininmization of number of clusters and intra cluster distance.
+    args: type, description
+        - customers: list of lists/ tuples, list of coord pairs (lat, lon)
+        - max_customers_per_subset: int, max. nr. of custs per cluster
+        - max_distance: int/float, max. distance between two points in the same cluster
+        - generations: int, the number of generations to run the algorithm for
+        - mutation_rate: float, the odds of a mutation occuring
+        - population_size: int, number of solutions in each generation
+        - p_elitism: float, the % of solutions from previous generation that will make next gen no matter what
+    """
     population = initialize_population(population_size, customers)
     for generation in range(generations):
         new_population = []
         # implement elitism: fittest p_elitsm % reach the next stage no matter what
-        elites = tournament_selection(population, customers, len(population), \
-                                    len(customers), max_customers_per_subset, \
-                                    max_distance, n_best=int(p_elitism*len(population)))
+        elites = tournament_selection(population, customers, len(population),\
+                                    max_customers_per_subset, max_distance,\
+                                    n_best=int(p_elitism*len(population)))
         new_population.extend(elites)
         for i in range(population_size // 2 - int(p_elitism*len(population))):
             parent1, parent2 = select_parents(population, customers, max_customers_per_subset, max_distance, 5)
@@ -146,15 +194,15 @@ def SP_GA(customers, max_customers_per_subset, max_distance,
                 child2 = mutate(child2, max_customers_per_subset)
             new_population.extend([child1, child2])
         bestyet = min(population, key=lambda sol: \
-                                (unfitness(sol, customers, len(customers), max_customers_per_subset, max_distance), \
+                                (unfitness(sol, customers, max_customers_per_subset, max_distance), \
                                 fitness(sol, customers))) 
         bestfitnessyet = fitness(min(population, key=lambda sol: \
-                                (unfitness(sol, customers, len(customers), max_customers_per_subset, max_distance), \
+                                (unfitness(sol, customers, max_customers_per_subset, max_distance), \
                                 fitness(sol, customers))), customers)
         print(f"best current: {bestyet} with a fitness score of {bestfitnessyet}")
         population = new_population
     best_solution = min(population, key=lambda sol: \
-                        (unfitness(sol, customers, len(customers), max_customers_per_subset, max_distance), \
+                        (unfitness(sol, customers, max_customers_per_subset, max_distance), \
                         fitness(sol, customers)))
     return flatten_solution(best_solution, len(customers)), \
             calculate_centroids(best_solution, customers), \
@@ -170,7 +218,7 @@ def SP_GA(customers, max_customers_per_subset, max_distance,
 #                                             customers,
 #                                             4, 
 #                                             100,
-#                                             1, 
+#                                             250, 
 #                                             0.2, 
 #                                             100,
 #                                             0.02,

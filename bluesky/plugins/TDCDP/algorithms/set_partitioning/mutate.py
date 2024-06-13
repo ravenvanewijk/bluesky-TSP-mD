@@ -3,6 +3,12 @@ import random
 from bluesky.plugins.TDCDP.algorithms.set_partitioning.funcs import sort_solution
 
 def mutate(solution, max_customers_per_subset):
+    """Initialization of a mutation. 
+    Selects and commences a point, swap or merge/split mutation.
+    Detailed descriptions of each mutation can be found in the respective functions.
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers
+        - max_customers_per_subset: int, max. nr. of custs per cluster"""
     mutation_type = random.choice(['point', 'swap', 'mergesplit'])
     if mutation_type == 'point':
         return point_mutation(solution, max_customers_per_subset)
@@ -12,6 +18,11 @@ def mutate(solution, max_customers_per_subset):
         return mergesplit_mutation(solution, max_customers_per_subset)
 
 def point_mutation(solution, max_customers_per_subset):
+    """Performs a point mutation on a solution.
+    Picks an item from a certain cluster and places it in another cluster.
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers
+        - max_customers_per_subset: int, max. nr. of custs per cluster"""
     # Select a random subset (cluster) that is not empty
     non_empty_clusters = sort_solution([subset for subset in solution if subset])
     if not non_empty_clusters:
@@ -41,6 +52,10 @@ def point_mutation(solution, max_customers_per_subset):
     return sort_solution(solution)
 
 def swap_mutation(solution):
+    """Performs a swap mutation on a solution.
+    Takes two points, each from different clusters and swaps these around.
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers"""
     # Select two different clusters
     non_empty_clusters = [subset for subset in solution if len(subset) > 0]
     if len(non_empty_clusters) < 2:
@@ -62,6 +77,11 @@ def swap_mutation(solution):
     return sort_solution(solution)
 
 def mergesplit_mutation(solution, max_customers_per_subset):
+    """Performs either a merge or a split mutation on a solution.
+    Merging will group two clusters together, splitting will split a cluster in two
+    args: type, description
+        - solution: list of lists, solution representing allocations of the customers
+        - max_customers_per_subset: int, max. nr. of custs per cluster"""
     mutation_type = random.choice(['merge','split'])
     if mutation_type == 'merge':
         # Select two different non-empty clusters to merge

@@ -23,4 +23,4 @@
 {"customer_id": 23, "served_time": 5634.0, "vehicle": "TRUCK", "coordinates": [42.871093492365105, -78.8677016298364]}
 {"customer_id": 24, "served_time": 5849.5, "vehicle": "UAV1_10", "coordinates": [42.87092999999999, -78.883244]}
 {"customer_id": 25, "served_time": 6121.85, "vehicle": "TRUCK", "coordinates": [42.85273079863737, -78.81507485143365]}
-{"completion_time: ": 6829.25}
+{"Completion time: ": 6829.25}

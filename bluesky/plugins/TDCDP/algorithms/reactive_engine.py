@@ -19,7 +19,6 @@ from bluesky.plugins.TDCDP.algorithms.customer import Customer, Cluster
 from geopy.distance import great_circle
 from bluesky.plugins.TDCDP.algorithms.set_partitioning.set_partitioning import\
                                                             SP_GA
-# from bluesky.tools.geo import qdrdist
 
 def init_plugin():
     # Configuration parameters
@@ -52,6 +51,39 @@ def react2remaining():
 class ReactiveRoute(Entity):
     def __init__(self, vehicle_group, M, args):
         """Initialize the reactive route on a set of customers that will be solved by the reactive algorithm."""
+
+        self.load_custs(args)
+        self.load_graph()
+        self.gen_clusters(M)
+        self.spawn_truck('TRUCK')
+
+        #_____________PARAMS_____________
+        self.delivery_time = 30
+        self.sortie_time = 60
+        self.rendezvous_time = 60
+        self.vehicle_group = vehicle_group
+
+        # Keep track of whether routing is done or not
+        self.routing_done = False
+
+    def spawn_truck(self, truckname):
+        """Spawn the truck at the depot location.
+        
+        Args:
+            - truckname: str, the name of the truck
+        """
+        self.truckname = truckname
+        bs.traf.cre(self.truckname, 'Truck', self.depotloc[0], self.depotloc[1], 0, 0, 0)
+        stack.stack(f'PAN {self.truckname}')
+        stack.stack('ZOOM 50')
+        self.truckspawned = True
+
+    def load_custs(self, args):
+        """Load customer data from arguments and create customer instances.
+        
+        Args:
+            - args: list of floats, series of floats that describe the customer locations lat/lon and package weight [lbs]
+        """
         if len(args)%3 !=0:
             bs.scr.echo('You missed a customer value, arguement number must be a multiple of 3.')
             return
@@ -74,36 +106,36 @@ class ReactiveRoute(Entity):
                         for i, data in enumerate(args)]
         # Remove the depot
         self.customers = self.customers[1:] 
+
+    def gen_clusters(self, M):
+        """Generate clusters for the customers using the set partitioning genetic algorithm.
+        
+        Args:
+            - M: int, the number of drones plus two (truck entry and exit points)
+        """
+        # cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
+        cluster_ids, cluster_centers, _ = SP_GA(self.custlocs, int(M)+2, 100)
+        self.clusters = []
+        for i in range(len(cluster_centers)):
+            custids = np.where(np.array(cluster_ids)==i)[0]
+            # adjustment is required, customer.id starts counting from 1 instead of 0
+            clust_custs = [customer for customer in self.customers if customer.id - 1 in custids]
+            self.clusters.append(Cluster(i, cluster_centers[i], clust_custs, False))
+
+    def load_graph(self):
+        """Load and simplify the road graph using OSMnx."""
         # 4 km border for the map is sufficient
         lims = get_map_lims(self.custlocs, 4)
         # Adjusted box sizes to include the entire map
         self.G = ox.graph_from_bbox(bbox=lims, network_type='drive')
         # Simplify the graph using osmnx
         self.G = simplify_graph(self.G)
-        # cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
-        cluster_ids, cluster_centers, _ = SP_GA(self.custlocs, int(M)+2, 100)
-        self.clusters = []
-        for i in range(len(cluster_centers)):
-            custids = np.where(np.array(cluster_ids)==i)[0]
-            clust_custs = [customer for customer in self.customers if customer.id in custids]
-            self.clusters.append(Cluster(i, cluster_centers[i], clust_custs, False))
-        self.truckname = 'TRUCK'
-        bs.traf.cre(self.truckname, 'Truck', self.depotloc[0], self.depotloc[1], 0, 0, 0)
-        stack.stack(f'PAN {self.truckname}')
-        stack.stack('ZOOM 50')
-
-        #_____________PARAMS_____________
-        self.delivery_time = 30
-        self.sortie_time = 60
-        self.rendezvous_time = 60
-        self.vehicle_group = vehicle_group
-
-        # Keep track of whether routing is done or not
-        self.routing_done = False
 
     @timed_function(dt = bs.sim.simdt * 5)
     def determine_route(self):
-        if self.routing_done:
+        """Determine the route for the truck to the nearest cluster."""
+
+        if self.routing_done or not self.truckspawned:
             return
         acrte = Route._routes[self.truckname]
         first_clust = True if acrte.iactwp == -1 else False
@@ -143,6 +175,7 @@ class ReactiveRoute(Entity):
                                                         next_target_loc)
             # Mark cluster as served such that it is not selected again
             self.clusters[nearest_cluster].served = True
+            print(f'Now serving cluster {nearest_cluster}...')
             self.addroute(cur_pos, truck_custs, drone_custs)
             stack.stack('OP')
             stack.stack('FF')
@@ -154,6 +187,13 @@ class ReactiveRoute(Entity):
                 pass
 
     def addroute(self, cur_pos, truck_custs, drone_custs):
+        """Add route waypoints and operations for the truck and drones.
+        
+        Args:
+            - cur_pos: tuple/list of floats, the current position of the truck (lat, lon)
+            - truck_custs: list of Customer objects, the customers to be served by the truck
+            - drone_custs: list of Customer objects, the customers to be served by the drones
+        """
         for truckcust in truck_custs:
             road_route = self.roadroute(cur_pos, truckcust.location)
             # update current position for next customer part
@@ -166,6 +206,12 @@ class ReactiveRoute(Entity):
             stack.stack(operation)
 
     def roadroute(self, A, B):
+        """Compute the road route from point A to point B using the taxicab distance.
+        
+        Args:
+            - A: tuple/ list of floats, the starting point (lat, lon)
+            - B: tuple/ list of floats, the destination point (lat, lon)
+        """
         route = []
         routepart = tc.distance.shortest_path(self.G, [A[0], A[1]], 
                                                     [B[0], B[1]])
@@ -223,6 +269,11 @@ class ReactiveRoute(Entity):
         return linemerge(route)
 
     def construct_scenario(self, road_route):
+        """Construct the scenario text for the waypoints of the road route.
+        
+        Args:
+            - road_route: LineString, the road route as a LineString
+        """
         route_waypoints = list(zip(road_route.xy[1], road_route.xy[0]))
         route_lats = road_route.xy[1]
         route_lons = road_route.xy[0]
@@ -284,6 +335,12 @@ class ReactiveRoute(Entity):
         return scen_text
 
     def construct_operations(self, truck_custs, drone_custs):
+        """Construct the operation commands for the truck and drones.
+        
+        Args:
+            - truck_custs: list of Customer objects, the customers to be served by the truck
+            - drone_custs: list of Customer objects, the customers to be served by the drones
+        """
         operation_text = []
         for truck_cust in truck_custs:
             operation_text.append(f"ADDOPERATIONPOINTS {self.truckname} {truck_cust.location[0]}/{truck_cust.location[1]} \
