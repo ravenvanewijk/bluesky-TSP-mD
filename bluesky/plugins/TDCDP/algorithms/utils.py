@@ -268,6 +268,12 @@ def reverse_linestring(line):
     reversed_coords = LineString(list(line.coords)[::-1])
     return reversed_coords
 
+def find_customer_by_location(customers, cur_cust_pos):
+    for customer in customers:
+        if np.allclose(customer.location, cur_cust_pos):
+            return customer
+    return None  # Return None if no customer matches the location
+
 def plot_custlocs(custlocs, G, cluster = None):
     # Extract latitudes and longitudes
     latitudes = [location[0] for location in custlocs]

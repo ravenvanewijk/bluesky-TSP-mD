@@ -2,6 +2,7 @@ import bluesky as bs
 import numpy as np
 import osmnx as ox
 import taxicab as tc
+import pandas as pd 
 import random
 from shapely.ops import linemerge
 from bluesky import stack
@@ -14,7 +15,8 @@ from bluesky.plugins.TDCDP.algorithms.utils import get_map_lims,\
                                                 gen_clusters,\
                                                 get_nearest,\
                                                 divide_and_order,\
-                                                reverse_linestring
+                                                reverse_linestring,\
+                                                find_customer_by_location
 from bluesky.plugins.TDCDP.algorithms.customer import Customer, Cluster
 from geopy.distance import great_circle
 from bluesky.plugins.TDCDP.algorithms.set_partitioning.set_partitioning import\
@@ -26,36 +28,34 @@ def init_plugin():
         'plugin_name':     'REACT',
         'plugin_type':     'sim'
     }
+    bs.traf.reactiveroute = ReactiveRoute()
     return config
 
-@stack.command
-def react(vehicle_group, M, *args):
-    """Call the reactive algorithm to solve the routing to a set of customers with a given number of drones.
-    This will employ a clustering method to serve each cluster iteratively.
-    
-    args: type, description
-        - vehicle_group: str (int), type of drone(s) to employ. Details are described in Murray's paper and Github
-        https://doi.org/10.1016/j.trc.2019.11.003. Refers to specific drone type 10<X>.
-        - M: str (int), number of drones
-        - *args: str (floats), series of floats that describe the customer locations lat/lon and package weight [lbs]
-        should be a multiple of 3
-        """
-    # call the reactiveroute class to react to the set of customers
-    bs.traf.reactiveroute = ReactiveRoute(vehicle_group, M, args)
-
-@stack.command(name='livereact')
-def react2remaining():
-    # implement function here that gets all existing locations of customers and react to these
-    pass
-
 class ReactiveRoute(Entity):
-    def __init__(self, vehicle_group, M, args):
-        """Initialize the reactive route on a set of customers that will be solved by the reactive algorithm."""
+    def __init__(self):
+        self.called = False
+        self.timing_added = False
+        # Keeps track of the time that has been added to the RTA to account for operations
+        self.op_time_added = 0
+    
+    @stack.command
+    def react(self, vehicle_group, M, *args):
+        """Call the reactive algorithm to solve the routing to a set of customers with a given number of drones.
+        This will employ a clustering method to serve each cluster iteratively.
+        
+        args: type, description
+            - vehicle_group: str (int), type of drone(s) to employ. Details are described in Murray's paper and Github
+            https://doi.org/10.1016/j.trc.2019.11.003. Refers to specific drone type 10<X>.
+            - M: str (int), number of drones
+            - *args: str (floats), series of floats that describe the customer locations lat/lon and package weight [lbs]
+            should be a multiple of 3
+            """
 
         self.load_custs(args)
         self.load_graph()
         self.gen_clusters(M)
         self.spawn_truck('TRUCK')
+        plot_custlocs(self.custlocs, self.G, self.cluster_ids)
 
         #_____________PARAMS_____________
         self.delivery_time = 30
@@ -63,8 +63,13 @@ class ReactiveRoute(Entity):
         self.rendezvous_time = 60
         self.vehicle_group = vehicle_group
 
-        # Keep track of whether routing is done or not
-        self.routing_done = False
+        # set called to True such that the routing begins
+        self.called = True
+
+    @stack.command(name='livereact')
+    def react2remaining(self):
+        # implement function here that gets all existing locations of customers and react to these
+        pass
 
     def spawn_truck(self, truckname):
         """Spawn the truck at the depot location.
@@ -74,9 +79,9 @@ class ReactiveRoute(Entity):
         """
         self.truckname = truckname
         bs.traf.cre(self.truckname, 'Truck', self.depotloc[0], self.depotloc[1], 0, 0, 0)
+        stack.stack(f'COLOUR {self.truckname} RED')
         stack.stack(f'PAN {self.truckname}')
         stack.stack('ZOOM 50')
-        self.truckspawned = True
 
     def load_custs(self, args):
         """Load customer data from arguments and create customer instances.
@@ -113,11 +118,11 @@ class ReactiveRoute(Entity):
         Args:
             - M: int, the number of drones plus two (truck entry and exit points)
         """
-        # cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
-        cluster_ids, cluster_centers, _ = SP_GA(self.custlocs, int(M)+2, 100)
+        # self.cluster_ids, cluster_centers = gen_clusters(3, self.custlocs)
+        self.cluster_ids, cluster_centers, _ = SP_GA(self.custlocs, int(M)+2, 100)
         self.clusters = []
         for i in range(len(cluster_centers)):
-            custids = np.where(np.array(cluster_ids)==i)[0]
+            custids = np.where(np.array(self.cluster_ids)==i)[0]
             # adjustment is required, customer.id starts counting from 1 instead of 0
             clust_custs = [customer for customer in self.customers if customer.id - 1 in custids]
             self.clusters.append(Cluster(i, cluster_centers[i], clust_custs, False))
@@ -131,11 +136,16 @@ class ReactiveRoute(Entity):
         # Simplify the graph using osmnx
         self.G = simplify_graph(self.G)
 
+    @stack.command(name='loadtiming')
+    def load_truck_travel_times(self, input_dir, file_name):
+        self.timing_added = True
+        self.trucktiming = pd.read_csv(input_dir + '/' + file_name)
+        self.C2Ctime = 0
+
     @timed_function(dt = bs.sim.simdt * 5)
     def determine_route(self):
         """Determine the route for the truck to the nearest cluster."""
-
-        if self.routing_done or not self.truckspawned:
+        if not self.called:
             return
         acrte = Route._routes[self.truckname]
         first_clust = True if acrte.iactwp == -1 else False
@@ -150,7 +160,7 @@ class ReactiveRoute(Entity):
             if nearest_cluster is None:
                 # When it is the last routepart, return
                 # Routing is done so we can stop adding route parts
-                road_back = self.roadroute((acrte.wplat[-1], acrte.wplon[-1]), (acrte.wplat[0], acrte.wplon[0]))
+                road_back = self.roadroute((acrte.wplat[-1], acrte.wplon[-1]), self.depotloc)
                 wp_commands = self.construct_scenario(road_back)
                 stack.stack(wp_commands)
                 destination_tolerance = 3/1852
@@ -158,9 +168,10 @@ class ReactiveRoute(Entity):
                                 {destination_tolerance} TRKDEL {self.truckname}")
                 # Add delivery point such that the truck stops at the end
                 stack.stack(f"ADDOPERATIONPOINTS {self.truckname} {road_back.xy[1][-1]}/{road_back.xy[0][-1]} DELIVERY 1")
+                timing_commands = self.truck_RTA((acrte.wplat[-1], acrte.wplon[-1]), 0, self.depotloc)
                 stack.stack('OP')
                 stack.stack('FF')
-                self.routing_done = True
+                self.called = False
                 return
 
             next_nearest_cluster = get_nearest(self.clusters, self.clusters[nearest_cluster].centroid, 'cluster')
@@ -174,8 +185,8 @@ class ReactiveRoute(Entity):
             truck_custs, drone_custs = divide_and_order(self.clusters[nearest_cluster].customers, cur_pos, 
                                                         next_target_loc)
             # Mark cluster as served such that it is not selected again
-            self.clusters[nearest_cluster].served = True
-            print(f'Now serving cluster {nearest_cluster}...')
+            self.clusters[nearest_cluster].mark_served()
+            # print(f'Now serving cluster {nearest_cluster}...')
             self.addroute(cur_pos, truck_custs, drone_custs)
             stack.stack('OP')
             stack.stack('FF')
@@ -196,11 +207,13 @@ class ReactiveRoute(Entity):
         """
         for truckcust in truck_custs:
             road_route = self.roadroute(cur_pos, truckcust.location)
-            # update current position for next customer part
-            cur_pos = truckcust.location
             wp_commands = self.construct_scenario(road_route)
             stack.stack(wp_commands)
-
+            if self.timing_added:
+                timing_commands = self.truck_RTA(cur_pos, truckcust.id, truckcust.location)
+                stack.stack(timing_commands)
+            # update current position for next customer part
+            cur_pos = truckcust.location
         operation_commands = self.construct_operations(truck_custs, drone_custs)
         for operation in operation_commands:
             stack.stack(operation)
@@ -329,9 +342,10 @@ class ReactiveRoute(Entity):
                 wp_turnspd = turn_spd
             # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
-            scen_text += f',{wplat},{wplon},{cruise_alt},25,{wptype},{wp_turnspd}'
+            # we have to give a speed if we dont specify RTAs, so set the default to 25
+            cruisespd = '' if self.timing_added else 25
+            scen_text += f',{wplat},{wplon},{cruise_alt},{cruisespd},{wptype},{wp_turnspd}'
 
-        # delivery_text = f"ADDOPERATIONPOINTS {self.truckname} {route_lats[-1]}/{route_lons[-1]} DELIVERY 30"
         return scen_text
 
     def construct_operations(self, truck_custs, drone_custs):
@@ -355,3 +369,36 @@ class ReactiveRoute(Entity):
                                 164.04199475065616, 60.828336856672 60, 30")
 
         return operation_text
+
+    def truck_RTA(self, cur_cust_pos, truckcust_id, truckcust_location):
+        if list(cur_cust_pos) == self.depotloc:
+            cur_cust_id = 0
+        else:
+            cur_cust = find_customer_by_location(self.customers, cur_cust_pos)
+            cur_cust_id = cur_cust.id
+
+        # look up position of the time that is required
+        # self.trucktiming is a flattened matrix, so take sqrt of len and multiply with cur cust id
+        # Then you arrive at the cur_cust. Add truck cust id to get to correct pos
+        pos = int(cur_cust_id * np.sqrt(len(self.trucktiming)) + truckcust_id)
+        data = self.trucktiming.iloc[pos]
+        t_req = data[' time [sec]']
+        self.C2Ctime += t_req
+        RTA = self.C2Ctime + self.op_time_added
+
+        return f"TDRTA {self.truckname}, {truckcust_location[0]}/{truckcust_location[1]}, {RTA}"
+
+    @timed_function
+    def mod_truck_RTA(self):
+        """Modifies the truck required time of arrival to account for the operations it has performed so far"""
+        if self.called and self.timing_added:
+            diff = bs.traf.Operations.trk_op_time - self.op_time_added
+            if diff > 0:
+                # add time lost to RTAs to account for the delay due to operations
+                Route._routes[self.truckname].wprta = \
+                                        [value + diff if value > 0 else value 
+                                        for value in Route._routes['TRUCK'].wprta]
+                # Update the added time such that it will not be added again
+                self.op_time_added += diff
+            # print([value for value in Route._routes[self.truckname].wprta if value > 0])
+            # print(bs.sim.simt)

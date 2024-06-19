@@ -578,7 +578,7 @@ class TDAutoPilot(Autopilot):
         amax = bs.traf.perf.axmax[acidx]
         iactwp = rte.iactwp
         # If ground speed is 0, then return accelerate by default
-        if gs == 0:
+        if gs <= 0:
             return gs + amax * bs.sim.simdt
         # Calculate the time to get to it considering the current ground speed
         # as the cruise speed
@@ -635,8 +635,6 @@ class TDAutoPilot(Autopilot):
                     # Just take it as 0
                     cruise_dist = 0
                     # TODO: This is innacurate but rare. Might fix later
-                if gs<0:
-                    print('ss')
                 time_cruise = cruise_dist / gs
                 
                 rte_time += time_cruise
@@ -653,8 +651,10 @@ class TDAutoPilot(Autopilot):
             return gs
         elif time_diff > 0:
             # Going too slow, accelerate
+            # print('accelerating', time_diff)
             return gs + amax * bs.sim.simdt
         elif time_diff < 0:
+            # print('decelerating', time_diff)
             # Going too fast, slow down
             return gs - amax * bs.sim.simdt
         else:

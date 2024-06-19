@@ -199,7 +199,7 @@ def SP_GA(customers, max_customers_per_subset, max_distance,
         bestfitnessyet = fitness(min(population, key=lambda sol: \
                                 (unfitness(sol, customers, max_customers_per_subset, max_distance), \
                                 fitness(sol, customers))), customers)
-        print(f"best current: {bestyet} with a fitness score of {bestfitnessyet}")
+        # print(f"best current: {bestyet} with a fitness score of {bestfitnessyet}")
         population = new_population
     best_solution = min(population, key=lambda sol: \
                         (unfitness(sol, customers, max_customers_per_subset, max_distance), \

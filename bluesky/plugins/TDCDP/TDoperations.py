@@ -35,6 +35,7 @@ class Operations(Entity):
         self.trkdelqueue = []
         self.data_logger = DataLogger()
         self.custs_served = 0
+        self.trk_op_time = 0
     
     def reset(self):
         self.operational_states = {}
@@ -42,6 +43,7 @@ class Operations(Entity):
         self.trkdelqueue = []
         self.data_logger.shutdown()
         self.custs_served = 0
+        self.trk_op_time = 0
     
     @stack.command(name='LOG')
     def config_log(self, new_file_name=None, new_log_dir=None):
@@ -99,6 +101,7 @@ class Operations(Entity):
                                 'op_duration': op_duration, # List of operation durations
                                 'children': children, # Child drones of operations that are taking place
                                 't0': t0, # Start time of operation. Keeps track of all operations individually
+                                't_a': np.inf, # Arrival time at the operation point, ready to operate
                                 'busy': False # Non vectorized variable. Keeps track if an operation is in progress
                                 }
 
@@ -110,6 +113,7 @@ class Operations(Entity):
         if bs.traf.alt[acidx] == 0 and bs.traf.cas[acidx] == 0 \
                 and 'ready2op' not in self.operational_states[acid]:
             self.operational_states[acid]['ready2op'] = True
+            self.operational_states[acid]['t_a'] = bs.sim.simt
 
         # check whether vehicle is stationary and thus ready to perform operation
         # If the vehicle is not stationary, the operation cannot be performed
@@ -169,7 +173,7 @@ class Operations(Entity):
             # When all operation(s) has/ have occured, complete the operation
             if all(self.operational_states[acid]['op_status']):
                 # Do not complete the operation if its the last truck wp, then it tries to continue
-                if bs.traf.type[acidx] == 'TRUCK' and iactwp + 1 == len(acrte.wpname):
+                if bs.traf.type[acidx].upper() == 'TRUCK' and iactwp + 1 == len(acrte.wpname):
                     # pop from operational states, operation is completed
                     self.operational_states.pop(acid, None)
                     return
@@ -184,6 +188,11 @@ class Operations(Entity):
     def mark_done(self, acid, idx):
         self.operational_states[acid]['op_status'][idx] = True
         self.operational_states[acid]['busy'] = False
+        if acid == 'TRUCK':
+            self.trk_op_time += self.operational_states[acid]['op_duration'][idx] 
+            if idx == 0:
+                # for first operation, add waiting time for the drone as well
+                                self.operational_states[acid]['t_a'] - self.operational_states[acid]['t0'][idx]
 
     def perform_sortie(self, acid, idx):
         # Sortie means an AC is to be spawned and routed from the waypoint.
@@ -206,7 +215,7 @@ class Operations(Entity):
         wp_index = self.operational_states[acid]['wp_index']
         # only if the vehicle is not a truck, continue with ascend. Otherwise, directly accelerate
         # After the waiting time, ascend to cruise altitude again
-        if bs.traf.type[acidx] != 'TRUCK':
+        if bs.traf.type[acidx].upper() != 'TRUCK':
             bs.traf.swlnav[acidx] = False
             stack.stack(f'{acid} ALT {acrte.wpalt[iactwp]/ft}')
             stack.stack(f'{acid} ATALT {acrte.wpalt[iactwp]/ft} SPD {acid} {acrte.wpspd[iactwp]/kts}')

@@ -11,21 +11,13 @@ class Customer:
         """
         self.id = id
         self.location = location
-        self.served = False
         self.wt = wt
         self.drone_eligible = drone_eligible
         self.delivery_time = None
 
-    def mark_served(self, delivery_time):
-        """Mark a customer as served
-        args: type, description:
-        - delivery_time: float, time of delivery"""
-        self.served = True
-        self.delivery_time = delivery_time
-
     def __repr__(self):
         """Get the data within the customer instance"""
-        return (f"Customer(id={self.id}, location={self.location}, served={self.served}, "
+        return (f"Customer(id={self.id}, location={self.location}, "
                 f"drone_eligible={self.drone_eligible}, delivery_time={self.delivery_time}), "
                 f"weight={self.wt}")
     
@@ -49,3 +41,9 @@ class Cluster():
         self.centroid = centroid
         self.customers = customers
         self.served = served
+
+    def mark_served(self):
+        """Mark a customer as served
+        args: type, description:
+        - delivery_time: float, time of delivery"""
+        self.served = True
