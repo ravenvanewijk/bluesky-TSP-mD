@@ -1,24 +1,18 @@
 import bluesky as bs
 import numpy as np
 import osmnx as ox
-import taxicab as tc
-import pandas as pd 
-import random
 from shapely.ops import linemerge
+from roadroute_lib import roadroute
 from bluesky import stack
 from bluesky.traffic import Route
 from bluesky.core import Entity, timed_function
 from bluesky.tools.geo import kwikqdrdist
-from bluesky.plugins.TDCDP.algorithms.utils import get_map_lims,\
-                                                simplify_graph,\
-                                                plot_custlocs,\
+from bluesky.plugins.TDCDP.algorithms.utils import plot_custlocs,\
                                                 gen_clusters,\
                                                 get_nearest,\
                                                 divide_and_order,\
-                                                reverse_linestring,\
-                                                find_customer_by_location
+                                                str_interpret, spdlim_ox2bs
 from bluesky.plugins.TDCDP.algorithms.customer import Customer, Cluster
-from geopy.distance import great_circle
 from bluesky.plugins.TDCDP.algorithms.set_partitioning.set_partitioning import\
                                                             SP_GA
 
@@ -34,9 +28,6 @@ def init_plugin():
 class ReactiveRoute(Entity):
     def __init__(self):
         self.called = False
-        self.timing_added = False
-        # Keeps track of the time that has been added to the RTA to account for operations
-        self.op_time_added = 0
     
     @stack.command
     def react(self, vehicle_group, M, *args):
@@ -52,10 +43,9 @@ class ReactiveRoute(Entity):
             """
 
         self.load_custs(args)
-        self.load_graph()
         self.gen_clusters(M)
         self.spawn_truck('TRUCK')
-        plot_custlocs(self.custlocs, self.G, self.cluster_ids)
+        # plot_custlocs(self.custlocs, self.G, self.cluster_ids)
 
         #_____________PARAMS_____________
         self.delivery_time = 30
@@ -127,20 +117,12 @@ class ReactiveRoute(Entity):
             clust_custs = [customer for customer in self.customers if customer.id - 1 in custids]
             self.clusters.append(Cluster(i, cluster_centers[i], clust_custs, False))
 
-    def load_graph(self):
+    @stack.command(name='LOADGRAPH')
+    def load_graph(self, path):
         """Load and simplify the road graph using OSMnx."""
-        # 4 km border for the map is sufficient
-        lims = get_map_lims(self.custlocs, 4)
-        # Adjusted box sizes to include the entire map
-        self.G = ox.graph_from_bbox(bbox=lims, network_type='drive')
-        # Simplify the graph using osmnx
-        self.G = simplify_graph(self.G)
-
-    @stack.command(name='loadtiming')
-    def load_truck_travel_times(self, input_dir, file_name):
-        self.timing_added = True
-        self.trucktiming = pd.read_csv(input_dir + '/' + file_name)
-        self.C2Ctime = 0
+        self.G = ox.load_graphml(filepath=path,
+                                edge_dtypes={'osmid': str_interpret,
+                                            'reversed': str_interpret})
 
     @timed_function(dt = bs.sim.simdt * 5)
     def determine_route(self):
@@ -160,15 +142,16 @@ class ReactiveRoute(Entity):
             if nearest_cluster is None:
                 # When it is the last routepart, return
                 # Routing is done so we can stop adding route parts
-                road_back = self.roadroute((acrte.wplat[-1], acrte.wplon[-1]), self.depotloc)
-                wp_commands = self.construct_scenario(road_back)
+                road_back, spd_lims = roadroute(self.G, (acrte.wplat[-1], acrte.wplon[-1]), self.depotloc)
+                road_back_merged = linemerge(road_back)
+                wp_commands = self.construct_scenario(road_back_merged, spd_lims)
                 stack.stack(wp_commands)
                 destination_tolerance = 3/1852
-                stack.stack(f"{self.truckname} ATDIST {road_back.xy[1][-1]} {road_back.xy[0][-1]} \
+                stack.stack(f"{self.truckname} ATDIST {road_back_merged.xy[1][-1]} {road_back_merged.xy[0][-1]} \
                                 {destination_tolerance} TRKDEL {self.truckname}")
                 # Add delivery point such that the truck stops at the end
-                stack.stack(f"ADDOPERATIONPOINTS {self.truckname} {road_back.xy[1][-1]}/{road_back.xy[0][-1]} DELIVERY 1")
-                timing_commands = self.truck_RTA((acrte.wplat[-1], acrte.wplon[-1]), 0, self.depotloc)
+                stack.stack(f"ADDOPERATIONPOINTS {self.truckname} \
+                            {road_back_merged.xy[1][-1]}/{road_back_merged.xy[0][-1]} DELIVERY 1")
                 stack.stack('OP')
                 stack.stack('FF')
                 self.called = False
@@ -206,82 +189,17 @@ class ReactiveRoute(Entity):
             - drone_custs: list of Customer objects, the customers to be served by the drones
         """
         for truckcust in truck_custs:
-            road_route = self.roadroute(cur_pos, truckcust.location)
-            wp_commands = self.construct_scenario(road_route)
+            road_route, spdlims = roadroute(self.G, cur_pos, truckcust.location)
+            road_route_merged = linemerge(road_route)
+            wp_commands = self.construct_scenario(road_route_merged, spdlims)
             stack.stack(wp_commands)
-            if self.timing_added:
-                timing_commands = self.truck_RTA(cur_pos, truckcust.id, truckcust.location)
-                stack.stack(timing_commands)
             # update current position for next customer part
             cur_pos = truckcust.location
         operation_commands = self.construct_operations(truck_custs, drone_custs)
         for operation in operation_commands:
             stack.stack(operation)
 
-    def roadroute(self, A, B):
-        """Compute the road route from point A to point B using the taxicab distance.
-        
-        Args:
-            - A: tuple/ list of floats, the starting point (lat, lon)
-            - B: tuple/ list of floats, the destination point (lat, lon)
-        """
-        route = []
-        routepart = tc.distance.shortest_path(self.G, [A[0], A[1]], 
-                                                    [B[0], B[1]])
-    
-        # Use the nodes to extract all edges u, v of graph G that the vehicle completely traverses
-        routepart_edges = zip(routepart[1][:-1], routepart[1][1:])
-
-        # routepart at beginning
-        route.append(routepart[2])
-        try:
-            # For every pair of edges, append the route with the Shapely LineStrings
-            for u, v in routepart_edges:
-                # Some edges have this attribute embedded, when geometry is curved
-                if 'geometry' in self.G.edges[(u, v, 0)]:
-                    route.append(self.G.edges[(u, v, 0)]['geometry'])
-                # Other edges don't have this attribute. These are straight lines between their two nodes.
-                else:
-                    # So, get a straight line between the nodes and append that line piece
-                    route.append(LineString([(self.G.nodes[u]['x'], self.G.nodes[u]['y']), 
-                                            (self.G.nodes[v]['x'], self.G.nodes[v]['y'])]))
-        except IndexError:
-            pass
-        
-        try:
-            # Additional check for first linepart directionality. Sometimes it might be facing the wrong way.
-            # The end of the beginning (incomplete) linestring should match
-            try:
-                if not route[1].coords[0] == routepart[2].coords[-1]:
-                    # Check if flipped version does align
-                    if route[1].coords[0] == routepart[2].coords[0]:
-                        route[0] = reverse_linestring(route[0])
-                    else:
-                        raise Exception('Taxicab alignment Error: Coordinates of beginning LineString does not align')
-            except IndexError:
-                pass
-        except AttributeError:
-            pass
-
-        try:
-            # Check whether final incomplete linestring is in proper direction, similar check
-            try:
-                if not route[-1].coords[-1] == routepart[3].coords[0]:
-                    # Check if flipped version does align
-                    if route[-1].coords[-1] == routepart[3].coords[-1]:
-                        route.append(reverse_linestring(routepart[3]))
-                    else:
-                        raise Exception('Taxicab alignment Error: Coordinates of final LineString does not align')
-                else:
-                    route.append(routepart[3])
-            except IndexError:
-                pass
-        except AttributeError or IndexError:
-            pass
-
-        return linemerge(route)
-
-    def construct_scenario(self, road_route):
+    def construct_scenario(self, road_route, spd_lims):
         """Construct the scenario text for the waypoints of the road route.
         
         Args:
@@ -330,7 +248,7 @@ class ReactiveRoute(Entity):
         # Initiate adddtwaypoints command
         scen_text += f'ADDTDWAYPOINTS {self.truckname}' # First add the root of the command
         # Loop through waypoints
-        for wplat, wplon, turn in zip(route_lats, route_lons, turns):
+        for wplat, wplon, turn, spdlim in zip(route_lats, route_lons, turns, spd_lims):
             # Check if this waypoint is a turn
             if turn == 'turn' or turn == 'sharpturn':
                 wptype = 'TURNSPD'
@@ -343,7 +261,7 @@ class ReactiveRoute(Entity):
             # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
             # we have to give a speed if we dont specify RTAs, so set the default to 25
-            cruisespd = '' if self.timing_added else 25
+            cruisespd = spdlim_ox2bs(spdlim)
             scen_text += f',{wplat},{wplon},{cruise_alt},{cruisespd},{wptype},{wp_turnspd}'
 
         return scen_text
@@ -369,36 +287,3 @@ class ReactiveRoute(Entity):
                                 164.04199475065616, 60.828336856672 60, 30")
 
         return operation_text
-
-    def truck_RTA(self, cur_cust_pos, truckcust_id, truckcust_location):
-        if list(cur_cust_pos) == self.depotloc:
-            cur_cust_id = 0
-        else:
-            cur_cust = find_customer_by_location(self.customers, cur_cust_pos)
-            cur_cust_id = cur_cust.id
-
-        # look up position of the time that is required
-        # self.trucktiming is a flattened matrix, so take sqrt of len and multiply with cur cust id
-        # Then you arrive at the cur_cust. Add truck cust id to get to correct pos
-        pos = int(cur_cust_id * np.sqrt(len(self.trucktiming)) + truckcust_id)
-        data = self.trucktiming.iloc[pos]
-        t_req = data[' time [sec]']
-        self.C2Ctime += t_req
-        RTA = self.C2Ctime + self.op_time_added
-
-        return f"TDRTA {self.truckname}, {truckcust_location[0]}/{truckcust_location[1]}, {RTA}"
-
-    @timed_function
-    def mod_truck_RTA(self):
-        """Modifies the truck required time of arrival to account for the operations it has performed so far"""
-        if self.called and self.timing_added:
-            diff = bs.traf.Operations.trk_op_time - self.op_time_added
-            if diff > 0:
-                # add time lost to RTAs to account for the delay due to operations
-                Route._routes[self.truckname].wprta = \
-                                        [value + diff if value > 0 else value 
-                                        for value in Route._routes['TRUCK'].wprta]
-                # Update the added time such that it will not be added again
-                self.op_time_added += diff
-            # print([value for value in Route._routes[self.truckname].wprta if value > 0])
-            # print(bs.sim.simt)

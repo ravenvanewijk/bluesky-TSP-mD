@@ -57,6 +57,8 @@ class Operations(Entity):
             acidx = bs.traf.id.index(acid)
             acrte = Route._routes[acid]
             iactwp = acrte.iactwp
+            if bs.sim.simt <= bs.sim.simdt and len(acrte.wplat) > 0:
+                iactwp = 0
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'operation_wp') and iactwp > -1:
                 _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
@@ -243,10 +245,10 @@ class Operations(Entity):
             bs.traf.delete(id)
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)
+            self.data_logger.log_data({'completion_time: ': bs.sim.simt})
         else:
             self.trkdelqueue.append(idx)
         
-        self.data_logger.log_data({'completion_time: ': bs.sim.simt})
         self.data_logger.shutdown()
         return True
 

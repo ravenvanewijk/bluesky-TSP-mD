@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "../../../../mFSTSP-ScenarioGen"
+		},
+		{
+			"path": "../../../../roadroute-lib"
 		}
 	],
 	"settings": {}
