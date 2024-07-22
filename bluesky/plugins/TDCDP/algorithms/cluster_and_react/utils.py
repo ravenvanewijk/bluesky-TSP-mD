@@ -194,21 +194,6 @@ def find_customer_by_location(customers, cur_cust_pos):
 def str_interpret(value):
     return value  # Ensure the value remains a string
 
-def spdlim_ox2bs(spdlim):
-    if type(spdlim) == str:
-        try:
-            spdlim = int(spdlim.strip('mph'))
-        except ValueError:
-            # ValueError occurs when there is a double entry for spd limit
-            # Take the highest one
-            spdlim = max([int(s.strip().replace(' mph', '')) for s in spdlim.split(',')])
-    elif type(spdlim) == int or type(spdlim) == float:
-        pass
-    else:
-        raise TypeError("Undefined type for speedlimit")
-
-    return mph2kts(spdlim)
-
 def mph2kts(mph):
     """Converts speed in mph to knots"""
     return float(mph) * 0.868976242

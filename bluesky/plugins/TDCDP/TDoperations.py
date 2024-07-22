@@ -241,7 +241,8 @@ class Operations(Entity):
         # Get id of idx 
         id = bs.traf.id.index(idx)
         # Call the actual delete function, iif all operations have been succesfully completed
-        if len(self.operational_states) == 0:
+        if len(self.operational_states) == 0 and\
+            len(self.drone_manager.active_drones) == 0:
             bs.traf.delete(id)
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)

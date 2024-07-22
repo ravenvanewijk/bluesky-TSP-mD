@@ -8,6 +8,9 @@
 		},
 		{
 			"path": "../../../../roadroute-lib"
+		},
+		{
+			"path": "../../../../mFSTSP-GraphGen"
 		}
 	],
 	"settings": {}

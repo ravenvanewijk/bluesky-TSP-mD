@@ -8,10 +8,9 @@ from bluesky.traffic import Route
 from bluesky.core import Entity, timed_function
 from bluesky.tools.geo import kwikqdrdist
 from bluesky.plugins.TDCDP.algorithms.utils import plot_custlocs,\
-                                                gen_clusters,\
                                                 get_nearest,\
                                                 divide_and_order,\
-                                                str_interpret, spdlim_ox2bs
+                                                str_interpret
 from bluesky.plugins.TDCDP.algorithms.customer import Customer, Cluster
 from bluesky.plugins.TDCDP.algorithms.set_partitioning.set_partitioning import\
                                                             SP_GA
@@ -30,7 +29,7 @@ class ReactiveRoute(Entity):
         self.called = False
     
     @stack.command
-    def react(self, vehicle_group, M, *args):
+    def react(self, vehicle_group, M, cruise_alt, cruise_spd, *args):
         """Call the reactive algorithm to solve the routing to a set of customers with a given number of drones.
         This will employ a clustering method to serve each cluster iteratively.
         
@@ -52,6 +51,8 @@ class ReactiveRoute(Entity):
         self.sortie_time = 60
         self.rendezvous_time = 60
         self.vehicle_group = vehicle_group
+        self.cruise_alt = cruise_alt
+        self.cruise_spd = cruise_spd
 
         # set called to True such that the routing begins
         self.called = True
@@ -261,7 +262,7 @@ class ReactiveRoute(Entity):
             # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
             # we have to give a speed if we dont specify RTAs, so set the default to 25
-            cruisespd = spdlim_ox2bs(spdlim)
+            cruisespd = spdlim
             scen_text += f',{wplat},{wplon},{cruise_alt},{cruisespd},{wptype},{wp_turnspd}'
 
         return scen_text
@@ -284,6 +285,7 @@ class ReactiveRoute(Entity):
                                 SORTIE, {self.sortie_time}, M{self.vehicle_group}, {i + 1}, \
                                 {drone_cust.location[0]}, {drone_cust.location[1]}, \
                                 {truck_custs[-1].location[0]}/{truck_custs[-1].location[1]}, \
-                                164.04199475065616, 60.828336856672 60, 30")
+                                {self.cruise_alt}, {self.cruise_spd}, \
+                                {self.delivery_time}, {self.sortie_time}")
 
         return operation_text
