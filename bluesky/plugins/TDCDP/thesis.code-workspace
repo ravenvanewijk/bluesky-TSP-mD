@@ -11,6 +11,9 @@
 		},
 		{
 			"path": "../../../../mFSTSP-GraphGen"
+		},
+		{
+			"path": "../../../../taxicab-st"
 		}
 	],
 	"settings": {}
