@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from PACO import PACO
+from python_tsp.exact import solve_tsp_branch_and_bound
 
 ST = pd.read_csv('bluesky/plugins/TDCDP/algorithms/deliver_and_conquer/tbl_truck_travel_data_PG.csv')
 ST['1/time'] = ST[' time [sec]'].apply(lambda x: 1/x if x != 0 else np.nan)
@@ -22,7 +23,6 @@ for _, row in ST.iterrows():
     else:
         print(f"Warning: Index out of bounds (i={i}, j={j})")
 
-from python_tsp.exact import solve_tsp_branch_and_bound
 
 xopt, fopt = solve_tsp_branch_and_bound(dist_mat)
 
