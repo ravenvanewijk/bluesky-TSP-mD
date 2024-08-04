@@ -1,11 +1,22 @@
 import random
 import osmnx as ox
+import networkx as nx
 import numpy as np
 import geopandas as gpd
+import pandas as pd
 from shapely.geometry import Polygon, Point
+from warnings import warn
+from osmnx.convert import graph_to_gdfs
 
 def str_interpret(value):
     return value  # Ensure the value remains a string
+
+def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-6):
+    """Find the index of a latitude/longitude pair in lists with tolerance."""
+    for idx, (lat, lon) in enumerate(zip(lat_list, lon_list)):
+        if abs(latlon[0] - lat) <= tol and abs(latlon[1] - lon) <= tol:
+            return idx
+    raise ValueError(f"Coordinates {latlon} not found in route within tolerance.")
 
 # Function to select a random vertex on the edge geometry
 def select_random_vertex(line):
@@ -19,6 +30,89 @@ def select_random_vertex(line):
     # Return the random vertex as a Point
     random_vertex_point = Point(random_vertex)
     return random_vertex_point
+
+def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
+    """
+    ADAPTED FROM https://github.com/gboeing/osmnx/blob/main/osmnx/utils_geo.py
+    This function returns points that are on the geometry instead of an
+    interpolation between these points.
+
+    Randomly sample points constrained to a spatial graph.
+
+    This generates a graph-constrained uniform random sample of points. Unlike
+    typical spatially uniform random sampling, this method accounts for the
+    graph's geometry. And unlike equal-length edge segmenting, this method
+    guarantees uniform randomness.
+
+    Parameters
+    ----------
+    G
+        Graph from which to sample points. Should be undirected (to avoid
+        oversampling bidirectional edges) and projected (for accurate point
+        interpolation).
+    n
+        How many points to sample.
+
+    Returns
+    -------
+    point
+        The sampled points, multi-indexed by `(u, v, key)` of the edge from
+        which each point was sampled.
+    """
+    if nx.is_directed(G):  # pragma: no cover
+        msg = "`G` should be undirected to avoid oversampling bidirectional edges."
+        warn(msg, category=UserWarning, stacklevel=2)
+    gdf_edges = graph_to_gdfs(G, nodes=False)[["geometry", "length"]]
+    weights = gdf_edges["length"] / gdf_edges["length"].sum()
+
+    # Initialize storage
+    sample = []
+    selected_points = set()
+    N = n
+    i = 0
+    max_i = 3
+    while N != 0 and not i > max_i:
+        idx = np.random.default_rng().choice(gdf_edges.index, size=n, p=weights)
+        lines = gdf_edges.loc[idx, "geometry"]
+        sample, N = select_points_from_lines(lines, sample, selected_points, N)
+        i += 1
+        if i >= max_i:
+            print(f"There was an issue with selecting {n} points."
+                   f"A selection of {n-N} points was constructed.")
+
+    return pd.Series(sample)
+
+def select_points_from_lines(geo_series, stored_points, selected_points, N):
+    """
+    Select points from a GeoSeries of linestrings while avoiding duplicates and considering weights.
+
+    Parameters
+    ----------
+    geo_series : gpd.GeoSeries
+        GeoSeries containing linestrings.
+    num_samples : int
+        Number of points to sample.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with selected points and their associated lines.
+    """
+    for line in geo_series:
+        points = list(line.coords)  # Extract points from the LineString
+        
+        available_points = [p for p in points if p not in selected_points]
+        
+        if available_points:
+            chosen_point = random.choice(available_points)
+            selected_points.add(chosen_point)
+            stored_points.append(Point(chosen_point))
+            N -= 1
+
+            if N == 0:
+                return stored_points, N
+
+    return stored_points, N
 
 def calculate_area(graph):
     # Extract node coordinates

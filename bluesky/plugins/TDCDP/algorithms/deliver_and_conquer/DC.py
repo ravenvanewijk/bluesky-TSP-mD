@@ -7,24 +7,29 @@ import random
 import matplotlib.pyplot as plt
 from roadroute_lib import roadroute
 from shapely.ops import linemerge
+from shapely import Point
 from bluesky.traffic.route import Route
-from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import \
-                                                        str_interpret, \
-                                                        calculate_area, \
-                                                        Customer, \
-                                                        select_random_vertex
-from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import \
-                                                        calc_inputs,\
-                                                        raw_data
-from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import \
-                                                        PACO
-from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import \
-                                                        LR_Optimizer
+from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
+    str_interpret,
+    calculate_area,
+    Customer,
+    select_random_vertex,
+    find_index_with_tolerance,
+    sample_points
+)
+from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
+    calc_inputs,
+    raw_data
+)
+from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import PACO
+from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
+    LR_Optimizer,
+    LR_PuLP
+)
 from bluesky.tools.aero import kts, ft                                                                                                   
 from bluesky.tools.geo import kwikqdrdist
 from bluesky import stack                                                       
 from bluesky.core import Entity, timed_function
-
 
 def init_plugin():
     # Configuration parameters
@@ -46,11 +51,15 @@ class DeliverConquer(Entity):
         This will employ a clustering method to serve each cluster iteratively.
         
         args: type, description
-            - vehicle_group: str (int), type of drone(s) to employ. Details are described in Murray's paper and Github
-            https://doi.org/10.1016/j.trc.2019.11.003. Refers to specific drone type 10<X>.
+            - vehicle_group: str (int), type of drone(s) to employ. 
+            Details are described in Murray's paper and Github
+            https://doi.org/10.1016/j.trc.2019.11.003
+            Refers to specific drone type 10<X>.
             - M: str (int), number of drones
-            - problem_name: str, name of the problem used to look up timing table of the truck
-            - *args: str (floats), series of floats that describe the customer locations lat/lon and package weight [lbs]
+            - problem_name: str, name of the problem used to look up timing 
+            table of the truck
+            - *args: str (floats), series of floats that describe the customer 
+            locations lat/lon and package weight [lbs]
             should be a multiple of 3
             """
         d_data = raw_data['M'+vehicle_group]['envelop']
@@ -74,6 +83,8 @@ class DeliverConquer(Entity):
         self.delivery_cmds = {}
         self.calc_basic_tsp(problem_name)
         self.route_basic_tsp()
+        self.gen_lr_locs()
+
         # Create a copy of the tour
         self.current_route = self.model.P[0].tour[:]
         # set called to True such that the drone routing begins
@@ -125,9 +136,23 @@ class DeliverConquer(Entity):
                                 edge_dtypes={'osmid': str_interpret,
                                             'reversed': str_interpret})
         
-        sites_per_km2 = 10
-        sites_per_m = sites_per_km2 / 10**6
-        self.gen_lr_locs(int(calculate_area(self.G) * sites_per_m))
+    def gen_lr_locs(self, cust_only = False):
+        # Extract locations
+        locations = [Point(customer.location) for customer in self.customers]
+
+        # Create a pandas Series from the locations
+        self.lr_locs = pd.Series(locations)
+
+        if not cust_only:
+            sites_per_km2 = 10
+            sites_per_m = sites_per_km2 / 10**6
+            n = int(calculate_area(self.G) * sites_per_m)
+            n -= len(self.customers)
+            self.lr_locs = pd.concat(
+                            [sample_points(self.G, n), self.lr_locs],
+                            ignore_index=True
+                                        )
+        
         # self.plot_graph(True)
 
     def calc_basic_tsp(self, problem_name):
@@ -157,13 +182,20 @@ class DeliverConquer(Entity):
         self.model.simulate()
 
     def route_basic_tsp(self):
-        """Routes the truck according to the TSP obtained by PACO."""
+        """
+        ________________________________PHASE 1________________________________
+        Routes the truck according to the TSP obtained by PACO."""
         stack.stack("HOLD")
         delivery_cmds = []
         for u, v in zip(self.model.P[0].tour, self.model.P[0].tour[1:]):
-            road_route, spd_lims = roadroute(self.G, self.customers[u].location,\
-                                                    self.customers[v].location)
+            road_route, spd_lims = roadroute(self.G, 
+                                            self.customers[u].location,
+                                            self.customers[v].location)
             road_route_merged = linemerge(road_route)
+            # Update customer location with Bluesky location on route
+            self.customers[u].location = \
+                np.around([road_route_merged.xy[1][0], 
+                            road_route_merged.xy[0][0]], 6)
             wp_commands = self.construct_scenario(road_route_merged, spd_lims)
             self.routing_cmds[f'{u}-{v}'] = wp_commands
             stack.stack(wp_commands)
@@ -184,7 +216,6 @@ class DeliverConquer(Entity):
         stack.stack("TRAIL ON")
 
         stack.stack("OP")
-
 
     def construct_scenario(self, road_route, spd_lims):
         """Construct the scenario text for the waypoints of the road route.
@@ -208,7 +239,8 @@ class DeliverConquer(Entity):
             angle=abs(a2-a1)
             if angle>180:
                 angle=360-angle
-            # In general, we noticed that we don't need to slow down if the turn is smaller than 25 degrees
+            # In general, we noticed that we don't need to slow down if 
+            # the turn is smaller than 25 degrees
             # If the angle is larger, then a more severe slowdown is required
             #  However, this will depend on the cruise speed of the vehicle.
             if angle > 35:
@@ -221,20 +253,23 @@ class DeliverConquer(Entity):
 
         # Let the vehicle slow down for the depot
         turns.append(True)
-        # Add some commands to pan to the correct location and zoom in, and use the modified active wp package.
+        # Add some commands to pan to the correct location and zoom in, 
+        # and use the modified active wp package.
         scen_text = ""
 
-        # After creating it, we want to add all the waypoints. We can do that using the ADDTDWAYPOINTS command.
+        # After creating it, we want to add all the waypoints. 
+        # We can do that using the ADDTDWAYPOINTS command.
         # ADDTDWAYPOINTS can chain waypoint data in the following way:
         # ADDTDWAYPOINTS ACID LAT LON ALT SPD Turn? TurnSpeed
-        # SPD here can be set as the cruise speed so the vehicle knows how fast to go
+        # SPD here can be set as the cruise speed so the vehicle knows how fast
+        # to go
         # cruise_spd = 25 #kts
         cruise_alt = 0 # Keep it constant throughout the flight
         # Turn speed of 5 kts usually works well
         turn_spd = 10 #kts
         sharpturn_spd = 5 #kts
         # Initiate addtdwaypoints command
-        scen_text += f'ADDTDWAYPOINTS {self.truckname}' # First add the root of the command
+        scen_text += f'ADDTDWAYPOINTS {self.truckname}'
         # Loop through waypoints
         for wplat, wplon, turn, spdlim in zip(route_lats, route_lons, turns, spd_lims):
             # Check if this waypoint is a turn
@@ -246,16 +281,19 @@ class DeliverConquer(Entity):
                 # Doesn't matter what we pick here, as long as it is assigned. 
                 # Will be ignored
                 wp_turnspd = turn_spd
-            # Add the text for this waypoint. It doesn't matter if we always add a turn speed, as BlueSky will
+            # Add the text for this waypoint. 
+            # It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
-            # we have to give a speed if we dont specify RTAs, so set the default to 25
+            # we have to give a speed if we dont specify RTAs, 
+            # so set the default to 25
             cruisespd = spdlim
             scen_text += f',{wplat},{wplon},{cruise_alt},{cruisespd},{wptype},{wp_turnspd}'
 
         return scen_text
 
     def plot_graph(self, cust = False):
-        """Plots the graph of the selected gpkg file as well as customer locations"""
+        """Plots the graph of the selected gpkg file as well as customer 
+        locations"""
         # Plot city graph
         fig, ax = ox.plot_graph(self.G, show=False, close=False)
         # Plot the customers
@@ -267,35 +305,10 @@ class DeliverConquer(Entity):
         # Show the plot with a legend
         ax.legend(handles=[locs_scatter])
         plt.show()
-
-    def gen_lr_locs(self, n):
-        """
-        Generates locations of launch and retrieval sites on the graph.
-
-        params:
-        n = number of L&R locations
-        """
-        # call function that randomly samples on roads. Can be anywhere inbetween
-        samples = ox.utils_geo.sample_points(self.G, n)
-
-        points=[]
-        for row in samples.items():
-            id = row[0]
-            # Get the geometry of the edge
-            if self.G.has_edge(id[0], id[1], id[2]):
-                edge_geom = self.G.edges[id]['geometry']
-                
-                # Find the nearest point on the edge geometry
-                point = select_random_vertex(edge_geom)
-                points.append(point)
-            else:
-                # Handle the case where the edge is not found
-                points.append(None)
-
-        self.lr_locs = pd.Series(points)
     
     @timed_function(dt=bs.sim.simdt * 10)
     def reroute(self):
+        """Reroutes the truck when the next customer can be served by drone"""
         if not self.called:
             return
         try:
@@ -320,13 +333,13 @@ class DeliverConquer(Entity):
         dcust_latlon = self.customers[self.dcustid].location
         ncust_latlon = self.customers[ncustid].location
         try:
-            dronecustwpidx = wplats.index(dcust_latlon[0])
+            dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, wplons)
             # print(f'Arriving at customer with id {self.custidx} in {calc_eta(acidx, nextcustwpidx)} seconds')
-        except:
+        except ValueError:
             raise ValueError(f"Customer {self.dcustid} with coordinates {dcust_latlon} not found in route")
         try:
-            nextcustwpidx = wplats.index(ncust_latlon[0])
-        except:
+            nextcustwpidx = find_index_with_tolerance(ncust_latlon, wplats, wplons)
+        except ValueError:
             raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
 
         ocustid = self.model.P[0].tour[self.custidx - 1]
@@ -362,6 +375,15 @@ class DeliverConquer(Entity):
 
     @timed_function(dt=bs.sim.simdt * 11)
     def deploy(self):
+        """
+        ________________________________PHASE 3________________________________
+
+        Deploys a drone by considering the customer that is to be served by a
+        drone. A PuLP model is activated to determine the optimal launch and
+        retrieval location of the drone.
+
+        The routing commands are directly inserted to the bs stack.
+        """
         if not self.called or not self.rerouted:
             return
         try:
@@ -380,7 +402,9 @@ class DeliverConquer(Entity):
         # Find matching indices in the route of the truck
         wp_indices = [rte_points_dict[point] for point in lr_locs_tuples if point in rte_points_dict]
         wp_indices = np.unique(np.array(wp_indices))
-        wp_indices = wp_indices[:10] 
+        # print(len(wp_indices))
+        # print(wp_indices)
+        # wp_indices = wp_indices[:10] 
 
         L, P, t_ij, t_jk, T_i, T_k, T_ik, B = calc_inputs(acidx, rte, wp_indices,
                                                     self.customers[self.dcustid].location[0],
@@ -389,14 +413,18 @@ class DeliverConquer(Entity):
                                                     self.vspd_up, self.vspd_down,
                                                     self.delivery_time, self.truck_delivery_time)
 
-        m = LR_Optimizer(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
-        m.create_model()
-        m.solve()
+        # m = LR_Optimizer(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
+        # m.create_model()
+        # m.solve()
 
-        stack.stack(f"ADDOPERATIONPOINTS {self.truckname}, {rte.wplat[m.launch_location]}/"
-                    f"{rte.wplon[m.launch_location]}, SORTIE, {self.sortie_time}, M{self.vehicle_group}, 1, "
+        mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
+        mp.create_model()
+        mp.solve()
+
+        stack.stack(f"ADDOPERATIONPOINTS {self.truckname}, {rte.wplat[mp.launch_location]}/"
+                    f"{rte.wplon[mp.launch_location]}, SORTIE, {self.sortie_time}, M{self.vehicle_group}, 1, "
                     f"{self.customers[self.dcustid].location[0]}, {self.customers[self.dcustid].location[1]}, "
-                    f"{rte.wplat[m.pickup_location]}/{rte.wplon[m.pickup_location]}, {self.cruise_alt / ft }, "
+                    f"{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}, {self.cruise_alt / ft }, "
                     f"{self.cruise_spd / kts}, {self.delivery_time}, {self.rendezvous_time}"    
                     )
         self.called = False

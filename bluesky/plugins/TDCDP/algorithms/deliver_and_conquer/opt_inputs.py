@@ -12,7 +12,37 @@ with open('bluesky/resources/performance/OpenAP/rotor/aircraft.json') as json_da
 
 def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up, 
                 vspd_down, delivery_time, truck_delivery_time):
+    """
+    Calculates various inputs required for routing, 
+    including truck and drone ETAs.
 
+    Params:
+    - acidx: int, index of the aircraft
+    - rte: object, route object containing waypoint and operational data
+    - wp_indeces: list of int, list of waypoint indices
+    - custlat: list of float, list of customer latitudes
+    - custlon: list of float, list of customer longitudes
+    - alt: float, cruise altitude in meters
+    - hspd: float, horizontal speed of the drone in m/s
+    - vspd_up: float, vertical ascent speed of the drone in m/s
+    - vspd_down: float, vertical descent speed of the drone in m/s
+    - delivery_time: float, time required for delivery of a drone
+    - truck_delivery_time: float, time required for truck delivery
+
+    Returns:
+    - tuple, containing:
+        - L: list of int, list of waypoint indices
+        - P: list of int, list of waypoint indices
+        - t_ij: dict, dictionary with drone travel time from i to j
+        - t_jk: dict, dictionary with drone travel time including delivery 
+        from j to k
+        - T_i: dict, dictionary with truck ETA at waypoint i
+        - T_k: dict, dictionary with truck ETA including delivery time at 
+        waypoint k
+        - T_ik: dict, dictionary with time difference between truck ETAs at 
+        waypoints i and k
+        - B: float, battery life of a drone
+    """
     B = 10**10
 
     T_i = {}
@@ -21,7 +51,7 @@ def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up,
     t_jk = {}
 
     for i in wp_indeces:
-        truck_t = calc_eta(acidx, i)
+        truck_t = calc_truck_ETA(acidx, i)
         T_i[i] = truck_t
         # + launch time
         T_k[i] = truck_t + truck_delivery_time
@@ -29,9 +59,9 @@ def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up,
         _, dist = kwikqdrdist(rte.wplat[i], rte.wplon[i],
                                 custlat, custlon)
         
-        t_ij[i] = calc_drone_tt(dist, hspd, vspd_up, vspd_down, alt, 3.5, i)
+        t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5, i)
         # + delivery drone time
-        t_jk[i] = calc_drone_tt(dist, hspd, vspd_up, vspd_down, alt, 3.5, i) + delivery_time
+        t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5, i) + delivery_time
 
     T_ik = {}
     for i in wp_indeces:
@@ -42,7 +72,17 @@ def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up,
 
     return L, P, t_ij, t_jk, T_i, T_k, T_ik, B
 
-def calc_eta(acidx, lastwp):
+def calc_truck_ETA(acidx, lastwp):
+    """
+    Calculates the estimated time of arrival (ETA) for the truck to reach the last waypoint.
+
+    Params:
+    - acidx: int, index of the aircraft
+    - lastwp: int, index of the last waypoint
+
+    Returns:
+    - float, estimated time of arrival in seconds
+    """
     # Get the aircraft information
     rte = bs.traf.ap.route[acidx]
     gs = bs.traf.gs[acidx]
@@ -61,6 +101,11 @@ def calc_eta(acidx, lastwp):
     for wpidx in range(iactwp, lastwp + 1):
         wplat = rte.wplat[wpidx]
         wplon = rte.wplon[wpidx]
+        # Add operational time of previous wp
+        op_time = sum(value for value in 
+                    rte.operation_duration[max(0, wpidx - 1)] \
+                    if value is not None)
+        eta_time += op_time
         # If the previous waypoint was a turn one, add extra time
         eta_time += prev_turn_time
         # Get its turnspeed 
@@ -121,7 +166,7 @@ def calc_eta(acidx, lastwp):
 
     return eta_time
 
-def calc_drone_tt(dist, hspd, vspd_up, vspd_down, alt, a, i):
+def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, i):
     """
     Calculates drone travel time considering acceleration.
 
