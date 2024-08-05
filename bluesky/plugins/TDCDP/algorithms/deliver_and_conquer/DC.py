@@ -13,9 +13,9 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     str_interpret,
     calculate_area,
     Customer,
-    select_random_vertex,
     find_index_with_tolerance,
-    sample_points
+    sample_points,
+    find_wp_indices
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
@@ -291,7 +291,7 @@ class DeliverConquer(Entity):
 
         return scen_text
 
-    def plot_graph(self, cust = False):
+    def plot_graph(self,lines=[], cust=False):
         """Plots the graph of the selected gpkg file as well as customer 
         locations"""
         # Plot city graph
@@ -300,7 +300,12 @@ class DeliverConquer(Entity):
         if cust and self.lr_locs is not None:
             locs_scatter = ax.scatter([point.x for _, point in self.lr_locs.items()],
                                             [point.y for _, point in self.lr_locs.items()],
-                                            c='red', s=50, zorder=5, label='L&R locations')
+                                            c='red', s=8, zorder=5, label='L&R locations')
+
+        for line in lines:
+            x, y = line.xy
+            ax.plot(x, y, marker='o')  # Plot the line with markers at vertices
+            ax.plot(x[-1],y[-1],'rs') 
 
         # Show the plot with a legend
         ax.legend(handles=[locs_scatter])
@@ -360,6 +365,8 @@ class DeliverConquer(Entity):
         wp_commands = self.construct_scenario(road_route_merged, spd_lims)
         stack.stack(wp_commands)
 
+        self.plot_graph(road_route, True)
+
         for u,v in zip(self.current_route, self.current_route[1:]):
             stack.stack(self.routing_cmds[f'{u}-{v}'])
 
@@ -393,31 +400,30 @@ class DeliverConquer(Entity):
 
         rte = bs.traf.ap.route[acidx]
 
-        # Create a dictionary for route points with their indices
-        rte_points_dict = {(lat, lon): i for i, (lat, lon) in enumerate(zip(rte.wplat, rte.wplon))}
+        # Define look ahead window: drone can be picked up a maximum of 3 
+        # customers later than the current drone customer
+        cust_max = self.model.P[0].tour[self.model.P[0].tour.index(12) + 3]
+        cust_max_loc = self.customers[cust_max].location
+        max_wp = find_index_with_tolerance(cust_max_loc,
+                                            rte.wplat,
+                                            rte.wplon)
 
-        # Extract tuples from lr_locs, of selected points on route
-        lr_locs_tuples = [(point.y, point.x) for point in self.lr_locs]
+        # Get matching LR locations on route
+        wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
 
-        # Find matching indices in the route of the truck
-        wp_indices = [rte_points_dict[point] for point in lr_locs_tuples if point in rte_points_dict]
-        wp_indices = np.unique(np.array(wp_indices))
-        # print(len(wp_indices))
-        # print(wp_indices)
-        # wp_indices = wp_indices[:10] 
-
-        L, P, t_ij, t_jk, T_i, T_k, T_ik, B = calc_inputs(acidx, rte, wp_indices,
-                                                    self.customers[self.dcustid].location[0],
-                                                    self.customers[self.dcustid].location[1],
-                                                    self.cruise_alt, self.cruise_spd, 
-                                                    self.vspd_up, self.vspd_down,
-                                                    self.delivery_time, self.truck_delivery_time)
+        L, P, t_ij, t_jk, T_i, T_k, T_ik, B = calc_inputs(
+                                acidx, rte, wp_indices, 
+                                self.customers[self.dcustid].location[0],
+                                self.customers[self.dcustid].location[1],
+                                self.cruise_alt, self.cruise_spd, 
+                                self.vspd_up, self.vspd_down,
+                                self.delivery_time, self.truck_delivery_time)
 
         # m = LR_Optimizer(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
         # m.create_model()
         # m.solve()
 
-        mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
+        mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, 15, 10, B)
         mp.create_model()
         mp.solve()
 

@@ -324,3 +324,15 @@
 {"customer_id": 24, "served_time": 8959.45, "vehicle": "TRUCK", "coordinates": [42.85273079863737, -78.81507485143365]}
 {"customer_id": 25, "served_time": 9537.6, "vehicle": "UAV1_1", "coordinates": [42.892684, -78.722783]}
 {"completion_time: ": 9781.7}
+{"customer_id": 1, "served_time": 440.5, "vehicle": "UAV1_1", "coordinates": [42.892684, -78.722783]}
+{"customer_id": 2, "served_time": 799.55, "vehicle": "TRUCK", "coordinates": [42.92095203665053, -78.74452458583956]}
+{"customer_id": 3, "served_time": 1066.65, "vehicle": "TRUCK", "coordinates": [42.911921002066634, -78.7431901687337]}
+{"customer_id": 4, "served_time": 1342.5, "vehicle": "TRUCK", "coordinates": [42.9195389347787, -78.72700300036458]}
+{"customer_id": 1, "served_time": 380.0, "vehicle": "UAV1_1", "coordinates": [42.892684, -78.722783]}
+{"customer_id": 2, "served_time": 713.55, "vehicle": "TRUCK", "coordinates": [42.911921002066634, -78.7431901687337]}
+{"customer_id": 3, "served_time": 898.2, "vehicle": "TRUCK", "coordinates": [42.92095203665053, -78.74452458583956]}
+{"customer_id": 4, "served_time": 1096.75, "vehicle": "TRUCK", "coordinates": [42.9195389347787, -78.72700300036458]}
+{"customer_id": 5, "served_time": 1415.0, "vehicle": "TRUCK", "coordinates": [42.93291633649878, -78.72439645097316]}
+{"customer_id": 6, "served_time": 1490.8, "vehicle": "TRUCK", "coordinates": [42.93307196811455, -78.72429038943717]}
+{"customer_id": 7, "served_time": 1903.35, "vehicle": "TRUCK", "coordinates": [42.95902399963467, -78.71974906669818]}
+{"customer_id": 8, "served_time": 2246.7, "vehicle": "TRUCK", "coordinates": [42.985851001873726, -78.72720607887966]}

@@ -18,19 +18,6 @@ def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-6):
             return idx
     raise ValueError(f"Coordinates {latlon} not found in route within tolerance.")
 
-# Function to select a random vertex on the edge geometry
-def select_random_vertex(line):
-    # Extract the coordinates from the LineString
-    x, y = line.xy
-    vertices = np.column_stack([x, y])
-    
-    # Select a random vertex
-    random_vertex = random.choice(vertices)
-    
-    # Return the random vertex as a Point
-    random_vertex_point = Point(random_vertex)
-    return random_vertex_point
-
 def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
     """
     ADAPTED FROM https://github.com/gboeing/osmnx/blob/main/osmnx/utils_geo.py
@@ -76,7 +63,7 @@ def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
         lines = gdf_edges.loc[idx, "geometry"]
         sample, N = select_points_from_lines(lines, sample, selected_points, N)
         i += 1
-        if i >= max_i:
+        if i > max_i:
             print(f"There was an issue with selecting {n} points."
                    f"A selection of {n-N} points was constructed.")
 
@@ -113,6 +100,37 @@ def select_points_from_lines(geo_series, stored_points, selected_points, N):
                 return stored_points, N
 
     return stored_points, N
+
+def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
+    """
+    Find waypoint indices of waypoints included in the truck's route.
+
+    Parameters:
+    - rte: object, route object containing waypoint data
+    - lr_locs: list of Point, selected points on the route
+    - max_wp: int, maximum number of waypoints to consider
+    - decimal_places: int, number of decimal places to round coordinates for comparison
+
+    Returns:
+    - np.array, array of unique waypoint indices
+    """
+    # Create a dictionary for route points with their indices, rounding coordinates to avoid precision issues
+    rte_points_dict = {
+        (round(lat, decimal_places), round(lon, decimal_places)): i
+        for i, (lat, lon) in enumerate(zip(rte.wplat[:max_wp], rte.wplon[:max_wp]))
+    }
+
+    # Extract tuples from lr_locs, rounding coordinates
+    lr_locs_tuples = [
+        (round(point.y, decimal_places), round(point.x, decimal_places))
+        for point in lr_locs
+    ]
+
+    # Find matching indices in the route of the truck, filtering out None values
+    wp_indices = [rte_points_dict.get(point) for point in lr_locs_tuples]
+    wp_indices = [idx for idx in wp_indices if idx is not None]  # Remove None values
+
+    return np.unique(np.array(wp_indices))
 
 def calculate_area(graph):
     # Extract node coordinates

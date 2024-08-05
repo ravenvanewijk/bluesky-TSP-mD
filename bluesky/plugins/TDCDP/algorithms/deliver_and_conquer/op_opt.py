@@ -132,7 +132,7 @@ class LR_Optimizer:
 
 class LR_PuLP:
 
-    def __init__(self, L, P, t_ij, t_jk, T_i, T_k, T_ik, B=10**9):
+    def __init__(self, L, P, t_ij, t_jk, T_i, T_k, T_ik, alpha, beta, B=10**9):
         """
         Initialize PuLP model to solve the model to find optimal launch and 
         retrieval location. 
@@ -151,6 +151,8 @@ class LR_PuLP:
             potential retrieval location k
             - T_ik: dictionary, lookup values of truck travel time from 
             potential launch location i to potential retrieval location k
+            - alpha: float, relative importance of excess waiting time
+            - beta: float, maximum allowed waiting time of truck or drone
             - B: float, drone battery life [NOT CURRENTLY IMPLEMENTED]
         """
         self.L = L
@@ -161,6 +163,8 @@ class LR_PuLP:
         self.T_k = T_k
         self.T_ik = T_ik
         self.B = B
+        self.alpha = alpha
+        self.beta = beta
 
     def create_model(self):
         """Method to create the model. Sets up constraints, objective function,
@@ -173,9 +177,10 @@ class LR_PuLP:
         self.y = pulp.LpVariable.dicts("y", self.P, cat='Binary')
         self.z = pulp.LpVariable.dicts("z", (self.L, self.P), cat='Binary')
         self.w = pulp.LpVariable.dicts("w", (self.L, self.P), lowBound=0, cat='Continuous')
+        self.w_p = pulp.LpVariable.dicts("p", (self.L, self.P), lowBound=0, cat='Continuous')
 
         # Objective function
-        self.model += pulp.lpSum(self.w[i][k] * 10 + (self.t_ij[i] + self.t_jk[k]) * self.z[i][k]
+        self.model += pulp.lpSum(self.w_p[i][k] * self.beta + (self.t_ij[i] + self.t_jk[k]) * self.z[i][k]
                                  for i in self.L for k in self.P)
 
         # Constraints
@@ -203,6 +208,11 @@ class LR_PuLP:
             for k in self.P:
                 self.model += self.w[i][k] >= (self.T_k[k] - (self.T_i[i] + self.t_ij[i] + self.t_jk[k])) * self.z[i][k], f"abs_waiting_1_{i}_{k}"
                 self.model += self.w[i][k] >= ((self.T_i[i] + self.t_ij[i] + self.t_jk[k]) - self.T_k[k]) * self.z[i][k], f"abs_waiting_2_{i}_{k}"
+
+        # Waiting time soft constraint
+        for i in self.L:
+            for k in self.P:
+                self.model += self.w[i][k] - self.alpha <= self.w_p[i][k]
 
     def solve(self):
         """Solves the model that has been set up by the create_model method"""
