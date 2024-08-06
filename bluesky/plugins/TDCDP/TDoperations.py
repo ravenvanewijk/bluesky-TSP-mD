@@ -147,6 +147,10 @@ class Operations(Entity):
                                                             )
                         # Increment customers served by 1
                         self.custs_served += 1
+                        try:
+                            self.drone_manager.active_drones[acid]['del_done'] = True
+                        except:
+                            pass
 
                 elif operation == 'SORTIE':
                     drone_avail = self.drone_manager.drone_available(

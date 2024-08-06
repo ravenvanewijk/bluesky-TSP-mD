@@ -38,7 +38,7 @@ class DroneManager(Entity):
         self.active_drones[available_name] = {'status': False, 'truck': truck, 'type': type, 'lat_i': lat_i, 
                                             'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
                                             'lon_k': lon_k, 'wpname_k': wpname_k, 'alt': alt, 'spd': spd,
-                                            'service_time': service_t, 'recovery_time': recovery_t}
+                                            'service_time': service_t, 'recovery_time': recovery_t, 'del_done': False}
         return available_name
 
     def get_available_name(self, UAVnumber):

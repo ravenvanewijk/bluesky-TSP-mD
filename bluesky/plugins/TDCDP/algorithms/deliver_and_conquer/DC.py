@@ -26,6 +26,7 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
     LR_Optimizer,
     LR_PuLP
 )
+from bluesky.plugins.TDCDP.TDdronemanager import get_wpname
 from bluesky.tools.aero import kts, ft                                                                                                   
 from bluesky.tools.geo import kwikqdrdist
 from bluesky import stack                                                       
@@ -43,6 +44,7 @@ def init_plugin():
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
+        self.rerouted = False
     
     @stack.command
     def deliver(self, vehicle_group, M, problem_name, *args):
@@ -67,6 +69,7 @@ class DeliverConquer(Entity):
         self.spawn_truck('TRUCK')
 
         #_____________PARAMS_____________
+        self.M = M
         self.delivery_time = 60
         self.sortie_time = 60
         self.rendezvous_time = 30
@@ -90,7 +93,6 @@ class DeliverConquer(Entity):
         # set called to True such that the drone routing begins
         self.called = True
         self.rerouted = False
-        self.custidx = 1
 
     def spawn_truck(self, truckname):
         """Spawn the truck at the depot location.
@@ -310,12 +312,54 @@ class DeliverConquer(Entity):
         # Show the plot with a legend
         ax.legend(handles=[locs_scatter])
         plt.show()
-    
-    @timed_function(dt=bs.sim.simdt * 10)
-    def reroute(self):
-        """Reroutes the truck when the next customer can be served by drone"""
+
+    def remove_commands(self, dcustid, ncustid):
+        """Removed commands from the dictionaries where commands are stored.
+        This must be done when customers are served, such they these commands
+        will not be parsed again.
+        """
+        # Alter route and remove commands from dictionaries
+        try:
+            # Only necessary first time
+            self.routing_cmds.pop(f'0-{dcustid}')
+            self.current_route.remove(0)
+        except KeyError:
+            pass 
+        self.routing_cmds.pop(f'{dcustid}-{ncustid}')
+        self.delivery_cmds.pop(f'{dcustid}')
+        # Alter current route of the truck
+        while not self.current_route.index(dcustid) == 0:
+            # Account for the case when truck has made a delivery
+            # During the delivery of the drone(s)
+            to_del = self.current_route[0]
+            self.current_route.remove(to_del)
+            self.delivery_cmds.pop(f'{to_del}')
+
+        self.current_route.remove(self.dcustid)
+
+    @timed_function(dt=bs.sim.simdt)
+    def calc_savings(self):
+        """Calculates the potential savings of serving next customer by drone
+        If time can be saved, a drone will be launched. Else, nothing is done
+        """
         if not self.called:
             return
+
+        dronecount = len(bs.traf.Operations.drone_manager.active_drones)
+
+        if not dronecount < int(self.M):
+            drone = list(bs.traf.Operations.drone_manager.active_drones.keys())[0]
+            acidx = bs.traf.id.index(self.truckname)
+            rte = bs.traf.ap.route[acidx]
+            wp_tospawn = get_wpname(str(bs.traf.Operations.drone_manager.active_drones[drone]['lat_i'])+'/'+str(bs.traf.Operations.drone_manager.active_drones[drone]['lon_i']), rte)
+            print(wp_tospawn)
+            return
+
+        self.reroute()
+        self.called = False
+
+    def reroute(self):
+        """Reroutes the truck when the next customer can be served by drone"""
         try:
             acidx = bs.traf.id.index(self.truckname)
         except ValueError:
@@ -324,11 +368,22 @@ class DeliverConquer(Entity):
         rte = bs.traf.ap.route[acidx]
         self.copy = rte.wplat[:]
 
-
         wplats = list(map(lambda x: round(x, ndigits=6), rte.wplat))
         wplons = list(map(lambda x: round(x, ndigits=6), rte.wplon))
-        self.dcustid = self.model.P[0].tour[self.custidx]
-        ncustid = self.model.P[0].tour[self.custidx + 1]
+
+        # Get customers served from operations module
+        # Drones that are otw to their customers should also be counted
+        custidx = 1 + bs.traf.Operations.custs_served + \
+                    sum(1 for drone in 
+                    bs.traf.Operations.drone_manager.active_drones.values() 
+                    if drone['del_done'])
+        self.dcustid = self.model.P[0].tour[custidx]
+        if self.dcustid == 0:
+            # Depot node, do not serve with drone
+            stack.stack("OP")
+            return
+
+        ncustid = self.model.P[0].tour[custidx + 1]
         # if not self.customers[custid].drone_eligible:
         #     return
         # Terminology:
@@ -339,7 +394,7 @@ class DeliverConquer(Entity):
         ncust_latlon = self.customers[ncustid].location
         try:
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, wplons)
-            # print(f'Arriving at customer with id {self.custidx} in {calc_eta(acidx, nextcustwpidx)} seconds')
+            # print(f'Arriving at customer with id {custidx} in {calc_eta(acidx, nextcustwpidx)} seconds')
         except ValueError:
             raise ValueError(f"Customer {self.dcustid} with coordinates {dcust_latlon} not found in route")
         try:
@@ -347,14 +402,7 @@ class DeliverConquer(Entity):
         except ValueError:
             raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
 
-        ocustid = self.model.P[0].tour[self.custidx - 1]
-        # Alter route and remove commands from dictionaries
-        self.routing_cmds.pop(f'{ocustid}-{self.dcustid}')
-        self.routing_cmds.pop(f'{self.dcustid}-{ncustid}')
-        self.delivery_cmds.pop(f'{self.dcustid}')
-        # Alter current route of the truck
-        self.current_route.remove(ocustid)
-        self.current_route.remove(self.dcustid)
+        self.remove_commands(self.dcustid, ncustid)
 
         stack.stack(f'DELRTE {self.truckname}')
         
@@ -365,7 +413,7 @@ class DeliverConquer(Entity):
         wp_commands = self.construct_scenario(road_route_merged, spd_lims)
         stack.stack(wp_commands)
 
-        self.plot_graph(road_route, True)
+        # self.plot_graph(road_route, True)
 
         for u,v in zip(self.current_route, self.current_route[1:]):
             stack.stack(self.routing_cmds[f'{u}-{v}'])
@@ -391,7 +439,7 @@ class DeliverConquer(Entity):
 
         The routing commands are directly inserted to the bs stack.
         """
-        if not self.called or not self.rerouted:
+        if not self.rerouted:
             return
         try:
             acidx = bs.traf.id.index(self.truckname)
@@ -402,7 +450,8 @@ class DeliverConquer(Entity):
 
         # Define look ahead window: drone can be picked up a maximum of 3 
         # customers later than the current drone customer
-        cust_max = self.model.P[0].tour[self.model.P[0].tour.index(12) + 3]
+        cust_max = self.model.P[0].tour\
+                            [self.model.P[0].tour.index(self.dcustid) + 3]
         cust_max_loc = self.customers[cust_max].location
         max_wp = find_index_with_tolerance(cust_max_loc,
                                             rte.wplat,
@@ -433,4 +482,7 @@ class DeliverConquer(Entity):
                     f"{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}, {self.cruise_alt / ft }, "
                     f"{self.cruise_spd / kts}, {self.delivery_time}, {self.rendezvous_time}"    
                     )
-        self.called = False
+
+        stack.stack('FF')
+        self.rerouted = False
+        self.called = True

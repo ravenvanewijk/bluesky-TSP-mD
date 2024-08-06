@@ -76,6 +76,7 @@ class TDRoute(Route):
 
         if len(wpname.split('/')) == 2:
             # Check whether coordinates are given. If so, look up wpname
+            print(wpname, acrte.wplat[acrte.wpname.index(get_wpname(wpname, acrte))], acrte.wplon[acrte.wpname.index(get_wpname(wpname, acrte))])
             wpname = get_wpname(wpname, acrte)
 
         wpid = acrte.wpname.index(wpname)
