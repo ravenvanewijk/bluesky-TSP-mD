@@ -76,9 +76,9 @@ class DroneManager(Entity):
         stack.stack(scen_text)
 
         drone_id = bs.traf.id.index(drone_name)
-        stack.stack(f"{drone_name} ATALT {data['alt']} SPDAP {drone_name} {data['spd']}")
         stack.stack(f'ATALT {drone_name} {data["alt"]} LNAV {drone_name} ON')
         stack.stack(f'ATALT {drone_name} {data["alt"]} VNAV {drone_name} ON')
+        stack.stack(f"ATALT {drone_name} {data['alt']} SPDAP {drone_name} {data['spd']}")
         
         # Add operation for the delivery
         stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_j']}/{data['lon_j']} DELIVERY {data['service_time']}")
@@ -120,14 +120,15 @@ class DroneManager(Entity):
                 return False
         return True
 
-def get_wpname(wpname, truckrte, tol=1e-6):
+def get_wpname(wpname, rte, tol=1e-6, prefer_later=True):
     """
-    Gets the closest wpname of a wp in a truck's route by looking for its coordinates.
+    Gets the closest wpname of a wp in a vehicle's route by looking for its coordinates.
     
     Args: type - description
     wpname: str - coordinates in 'lat/lon' format to look up
-    truckrte: route object - route of the truck containing waypoint data
+    rte: route object - route of the vehicle containing waypoint data
     tol: float - tolerance for considering two coordinates as close
+    prefer_later: bool - prefer equal waypoints later in the vehicle's route
     
     Returns:
     str: the name of the closest waypoint or None if not found
@@ -143,13 +144,17 @@ def get_wpname(wpname, truckrte, tol=1e-6):
     min_distance = float('inf')  
 
     # Iterate over all waypoints to find the closest one
-    for i, (plat, plon) in enumerate(zip(truckrte.wplat, truckrte.wplon)):
+    for i, (plat, plon) in enumerate(zip(rte.wplat, rte.wplon)):
         # Calculate the Euclidean distance (for simplicity)
         distance = sqrt((plat - lat) ** 2 + (plon - lon) ** 2)
 
         # Update the closest waypoint if a new minimum distance is found
-        if distance < min_distance:
+        if prefer_later:
+            condition = distance <= min_distance
+        else:
+            condition = distance < min_distance
+        if condition:
             min_distance = distance
-            closest_wpname = truckrte.wpname[i]
+            closest_wpname = rte.wpname[i]
 
     return closest_wpname

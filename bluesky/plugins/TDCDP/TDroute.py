@@ -27,6 +27,7 @@ class TDRoute(Route):
         self.op_type = []
 
     @stack.command
+    @staticmethod
     def addtdwaypoints(acidx: 'acid', *args):
         # Args come in this order: lat, lon, alt, spd, TURNSPD/TURNRAD/FLYBY, turnspeed or turnrad value
         # (extended) add operation arg
@@ -48,6 +49,7 @@ class TDRoute(Route):
 
     
     @stack.command
+    @staticmethod
     def addoperationpoints(vehicleidx: 'acid', wpname: 'wpname/coords', wptype: 'wptype', duration: 'duration', *args):
         # Args are only valid for SORTIE type modification and come in this order: 
         # type, UAVnumber, lat_j, lon_j, wpname_k, alt, spd, servicetime, recoverytime
@@ -76,8 +78,8 @@ class TDRoute(Route):
 
         if len(wpname.split('/')) == 2:
             # Check whether coordinates are given. If so, look up wpname
-            print(wpname, acrte.wplat[acrte.wpname.index(get_wpname(wpname, acrte))], acrte.wplon[acrte.wpname.index(get_wpname(wpname, acrte))])
-            wpname = get_wpname(wpname, acrte)
+            prefer_later = True if wptype=='RENDEZVOUS' else False
+            wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
 
         wpid = acrte.wpname.index(wpname)
         if acrte.wpflyby[wpid]:
@@ -104,7 +106,7 @@ class TDRoute(Route):
         if wptype.upper() == 'SORTIE':
             if len(args[4].split('/')) == 2:
                 # Check whether coordinates are given. If so, look up wpname. If not, None is returned
-                wpname_k = get_wpname(args[4], acrte)
+                wpname_k = get_wpname(args[4], acrte, prefer_later=False)
                 lat_k = args[4].split('/')[0]
                 lon_k = args[4].split('/')[1]
             else:

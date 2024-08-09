@@ -213,6 +213,12 @@ class LR_PuLP:
         for i in self.L:
             for k in self.P:
                 self.model += self.w[i][k] - self.alpha <= self.w_p[i][k]
+        
+        # Prohibit equal launch are retrieval location, algorithmic convenience
+        for i in self.L:
+            for k in self.P:
+                if i == k:
+                    self.model += self.x[i] + self.y[k] <= 1, f"not_same_{i}_{k}"
 
     def solve(self):
         """Solves the model that has been set up by the create_model method"""

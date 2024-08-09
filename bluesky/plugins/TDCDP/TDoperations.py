@@ -61,14 +61,28 @@ class Operations(Entity):
                 iactwp = 0
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'operation_wp') and iactwp > -1:
-                _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], acrte.wplat[iactwp], acrte.wplon[iactwp])
+                _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], 
+                                    acrte.wplat[iactwp], acrte.wplon[iactwp])
+                prevwp = max(0, iactwp - 1)
+                _, prevdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], 
+                                    acrte.wplat[prevwp], acrte.wplon[prevwp])
+                actcond = acrte.operation_wp[iactwp] and \
+                                actdist < delivery_dist
+                prevcond = acrte.operation_wp[prevwp] and \
+                                prevdist < delivery_dist
                 # when distance is neglible, set SPD to 0 manually and start operation process
-                if acrte.operation_wp[iactwp] and actdist < delivery_dist and acid not in self.operational_states:
+                # Two checks:
+                #   1. actcond: checks distance for active wp
+                #   2. prevcond: checks distance for previous wp
+                # both are required (2 for e.g. spawn sorties)
+                if (prevcond or actcond)\
+                        and acid not in self.operational_states:
+                    iactwp = iactwp if actcond else iactwp - 1
                     self.commence_operation(acrte, acidx, acid, iactwp)
                     
                 # check whether an operation is active, or start timer when vehicle is stationary at ALT and SPD 0
                 if acid in self.operational_states:
-                    self.handle_operation(acrte, acidx, acid, iactwp)
+                    self.handle_operation(acrte, acidx, acid)
 
     def commence_operation(self, acrte, acidx, acid, iactwp):
         """This function let's the vehicle come to a complete stop at alt 0, and triggers the operation handler once
@@ -106,12 +120,28 @@ class Operations(Entity):
                                 't_a': np.inf, # Arrival time at the operation point, ready to operate
                                 'busy': False # Non vectorized variable. Keeps track if an operation is in progress
                                 }
+        # Special (rare) case:
+        # When Rendezvous wp == Sortie wp, sortie is completed before adding
+        # rendezvous. Operational states dictionary of that sortie will be 
+        # deleted before the rendezvous is added
+        # Op status of the sortie should be manually set to True
+        for idx in range(len(self.operational_states[acid]['op_status'])):
+            cond1 = self.operational_states[acid]['op_type'][idx] == 'SORTIE'
+            cond2 = self.operational_states[acid]['children'][idx] in \
+                        self.drone_manager.active_drones
+            if cond1 and cond2:
+                child = self.operational_states[acid]['children'][idx]
+                cond3 = self.drone_manager.active_drones[child]['status'] == 'OTW'
+                if cond3:
+                    self.operational_states[acid]['op_status'][idx] = True
 
-    def handle_operation(self, acrte, acidx, acid, iactwp):
+
+    def handle_operation(self, acrte, acidx, acid):
         """Handle the situation accordingly by descending (optional), waiting and performing situational tasks.
         e.g. waiting for drone rendezvous at location."""
         # AC is marked to make a delivery. Start the timer for the first time the altitude and speed are 0
         # At that time, the operation timer starts
+        iactwp = self.operational_states[acid]['wp_index']
         if bs.traf.alt[acidx] == 0 and bs.traf.cas[acidx] == 0 \
                 and 'ready2op' not in self.operational_states[acid]:
             self.operational_states[acid]['ready2op'] = True
@@ -198,7 +228,7 @@ class Operations(Entity):
             self.trk_op_time += self.operational_states[acid]['op_duration'][idx] 
             if idx == 0:
                 # for first operation, add waiting time for the drone as well
-                                self.operational_states[acid]['t_a'] - self.operational_states[acid]['t0'][idx]
+                self.operational_states[acid]['t_a'] - self.operational_states[acid]['t0'][idx]
 
     def perform_sortie(self, acid, idx):
         # Sortie means an AC is to be spawned and routed from the waypoint.

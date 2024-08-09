@@ -15,7 +15,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     Customer,
     find_index_with_tolerance,
     sample_points,
-    find_wp_indices
+    find_wp_indices,
+    extract_arguments
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
@@ -26,6 +27,7 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
     LR_Optimizer,
     LR_PuLP
 )
+from bluesky.plugins.TDCDP.TDoperations import delivery_dist
 from bluesky.plugins.TDCDP.TDdronemanager import get_wpname
 from bluesky.tools.aero import kts, ft                                                                                                   
 from bluesky.tools.geo import kwikqdrdist
@@ -44,7 +46,6 @@ def init_plugin():
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
-        self.rerouted = False
     
     @stack.command
     def deliver(self, vehicle_group, M, problem_name, *args):
@@ -92,7 +93,6 @@ class DeliverConquer(Entity):
         self.current_route = self.model.P[0].tour[:]
         # set called to True such that the drone routing begins
         self.called = True
-        self.rerouted = False
 
     def spawn_truck(self, truckname):
         """Spawn the truck at the depot location.
@@ -140,7 +140,8 @@ class DeliverConquer(Entity):
         
     def gen_lr_locs(self, cust_only = False):
         # Extract locations
-        locations = [Point(customer.location) for customer in self.customers]
+        locations = [Point(customer.location[1], customer.location[0]) 
+                        for customer in self.customers]
 
         # Create a pandas Series from the locations
         self.lr_locs = pd.Series(locations)
@@ -203,18 +204,18 @@ class DeliverConquer(Entity):
             stack.stack(wp_commands)
             if v == 0:
                 continue
-            op_text = (f"ADDOPERATIONPOINTS {self.truckname} "
+            op_text = (f"ADDOPERATIONPOINTS {self.truckname},"
                 f"{self.customers[v].location[0]}/"
-                f"{self.customers[v].location[1]} "
-                f"DELIVERY {self.delivery_time}")
+                f"{self.customers[v].location[1]},"
+                f"DELIVERY,{self.delivery_time}")
             delivery_cmds.append(op_text)
             self.delivery_cmds[f'{v}'] = op_text
 
         for delivery_cmd in delivery_cmds:
             stack.stack(delivery_cmd)
 
-        stack.stack(f"VNAV {self.truckname} ON")
-        stack.stack(f"LNAV {self.truckname} ON")
+        # stack.stack(f"VNAV {self.truckname} ON")
+        # stack.stack(f"LNAV {self.truckname} ON")
         stack.stack("TRAIL ON")
 
         stack.stack("OP")
@@ -255,16 +256,11 @@ class DeliverConquer(Entity):
 
         # Let the vehicle slow down for the depot
         turns.append(True)
-        # Add some commands to pan to the correct location and zoom in, 
-        # and use the modified active wp package.
         scen_text = ""
 
-        # After creating it, we want to add all the waypoints. 
         # We can do that using the ADDTDWAYPOINTS command.
         # ADDTDWAYPOINTS can chain waypoint data in the following way:
         # ADDTDWAYPOINTS ACID LAT LON ALT SPD Turn? TurnSpeed
-        # SPD here can be set as the cruise speed so the vehicle knows how fast
-        # to go
         # cruise_spd = 25 #kts
         cruise_alt = 0 # Keep it constant throughout the flight
         # Turn speed of 5 kts usually works well
@@ -286,8 +282,6 @@ class DeliverConquer(Entity):
             # Add the text for this waypoint. 
             # It doesn't matter if we always add a turn speed, as BlueSky will
             # ignore it if the wptype is set as FLYBY
-            # we have to give a speed if we dont specify RTAs, 
-            # so set the default to 25
             cruisespd = spdlim
             scen_text += f',{wplat},{wplon},{cruise_alt},{cruisespd},{wptype},{wp_turnspd}'
 
@@ -329,13 +323,13 @@ class DeliverConquer(Entity):
         self.delivery_cmds.pop(f'{dcustid}')
         # Alter current route of the truck
         while not self.current_route.index(dcustid) == 0:
-            # Account for the case when truck has made a delivery
+            # Account for the case where truck has made one or more deliveries
             # During the delivery of the drone(s)
             to_del = self.current_route[0]
             self.current_route.remove(to_del)
             self.delivery_cmds.pop(f'{to_del}')
 
-        self.current_route.remove(self.dcustid)
+        self.current_route.remove(dcustid)
 
     @timed_function(dt=bs.sim.simdt)
     def calc_savings(self):
@@ -347,26 +341,22 @@ class DeliverConquer(Entity):
 
         dronecount = len(bs.traf.Operations.drone_manager.active_drones)
 
-        if not dronecount < int(self.M):
-            drone = list(bs.traf.Operations.drone_manager.active_drones.keys())[0]
-            acidx = bs.traf.id.index(self.truckname)
-            rte = bs.traf.ap.route[acidx]
-            wp_tospawn = get_wpname(str(bs.traf.Operations.drone_manager.active_drones[drone]['lat_i'])+'/'+str(bs.traf.Operations.drone_manager.active_drones[drone]['lon_i']), rte)
-            print(wp_tospawn)
+        if dronecount >= int(self.M):
             return
 
+        # Stop the simulation, we need to determine next drone's launch point
+        stack.stack('HOLD')
         self.reroute()
-        self.called = False
 
     def reroute(self):
         """Reroutes the truck when the next customer can be served by drone"""
         try:
-            acidx = bs.traf.id.index(self.truckname)
+            truckidx = bs.traf.id.index(self.truckname)
         except ValueError:
             return
-        stack.stack('HOLD')
-        rte = bs.traf.ap.route[acidx]
-        self.copy = rte.wplat[:]
+
+        rte = bs.traf.ap.route[truckidx]
+        # self.copy = rte.wplat[:]
 
         wplats = list(map(lambda x: round(x, ndigits=6), rte.wplat))
         wplons = list(map(lambda x: round(x, ndigits=6), rte.wplon))
@@ -377,10 +367,10 @@ class DeliverConquer(Entity):
                     sum(1 for drone in 
                     bs.traf.Operations.drone_manager.active_drones.values() 
                     if drone['del_done'])
-        self.dcustid = self.model.P[0].tour[custidx]
-        if self.dcustid == 0:
+        dcustid = self.model.P[0].tour[custidx]
+        if dcustid == 0:
             # Depot node, do not serve with drone
-            stack.stack("OP")
+            # stack.stack("OP")
             return
 
         ncustid = self.model.P[0].tour[custidx + 1]
@@ -389,47 +379,53 @@ class DeliverConquer(Entity):
         # Terminology:
         # - dcustid: drone customer id (to be handled by a drone)
         # - ncustid: next customer id (after the drone customer)
-        # - ocustid: the original customer that is being routed from
-        dcust_latlon = self.customers[self.dcustid].location
+        # - ocustid: the origin customer that is being routed from
+        dcust_latlon = self.customers[dcustid].location
         ncust_latlon = self.customers[ncustid].location
         try:
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, wplons)
-            # print(f'Arriving at customer with id {custidx} in {calc_eta(acidx, nextcustwpidx)} seconds')
+            # print(f'Arriving at customer with id {custidx} in {calc_eta(truckidx, nextcustwpidx)} seconds')
         except ValueError:
-            raise ValueError(f"Customer {self.dcustid} with coordinates {dcust_latlon} not found in route")
+            raise ValueError(f"Customer {dcustid} with coordinates {dcust_latlon} not found in route")
         try:
             nextcustwpidx = find_index_with_tolerance(ncust_latlon, wplats, wplons)
         except ValueError:
             raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
 
-        self.remove_commands(self.dcustid, ncustid)
+        self.remove_commands(dcustid, ncustid)
 
-        stack.stack(f'DELRTE {self.truckname}')
+        # Delete old truck route
+        print("Removing old route...")
+        bs.traf.ap.route[truckidx].delrte(truckidx)
+        print("Route removal done.")
         
-        road_route, spd_lims = roadroute(self.G, (bs.traf.lat[acidx], bs.traf.lon[acidx]), \
+        road_route, spd_lims = roadroute(self.G, (bs.traf.lat[truckidx], bs.traf.lon[truckidx]), \
                                                 self.customers[ncustid].location)
 
         road_route_merged = linemerge(road_route)
         wp_commands = self.construct_scenario(road_route_merged, spd_lims)
-        stack.stack(wp_commands)
-
         # self.plot_graph(road_route, True)
+        newcmds = extract_arguments(wp_commands, 
+                                    f'ADDTDWAYPOINTS {self.truckname},')
 
+        bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
+
+        print("Adding new route...")
         for u,v in zip(self.current_route, self.current_route[1:]):
-            stack.stack(self.routing_cmds[f'{u}-{v}'])
+            args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
+                                    f'ADDTDWAYPOINTS {self.truckname},')
+            bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
+        print("Done adding new route. Adding operations...")
 
         for delivery_cmd in self.delivery_cmds:
-            stack.stack(self.delivery_cmds[delivery_cmd])
+            args = extract_arguments(self.delivery_cmds[delivery_cmd],
+                                    f'ADDOPERATIONPOINTS {self.truckname},')
+            bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
 
-        stack.stack(f'VNAV {self.truckname} ON')
-        stack.stack(f'LNAV {self.truckname} ON')
+        print("Done adding operations.")
+        self.deploy(truckidx, rte, dcustid)
 
-        stack.stack('OP')
-
-        self.rerouted = True
-
-    @timed_function(dt=bs.sim.simdt * 11)
-    def deploy(self):
+    def deploy(self, truckidx, rte, dcustid):
         """
         ________________________________PHASE 3________________________________
 
@@ -439,19 +435,11 @@ class DeliverConquer(Entity):
 
         The routing commands are directly inserted to the bs stack.
         """
-        if not self.rerouted:
-            return
-        try:
-            acidx = bs.traf.id.index(self.truckname)
-        except ValueError:
-            return
-
-        rte = bs.traf.ap.route[acidx]
-
         # Define look ahead window: drone can be picked up a maximum of 3 
         # customers later than the current drone customer
         cust_max = self.model.P[0].tour\
-                            [self.model.P[0].tour.index(self.dcustid) + 3]
+                            [min(self.model.P[0].tour.index(dcustid) + 3, 
+                                len(self.model.P[0].tour) - 1)]
         cust_max_loc = self.customers[cust_max].location
         max_wp = find_index_with_tolerance(cust_max_loc,
                                             rte.wplat,
@@ -461,9 +449,9 @@ class DeliverConquer(Entity):
         wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
 
         L, P, t_ij, t_jk, T_i, T_k, T_ik, B = calc_inputs(
-                                acidx, rte, wp_indices, 
-                                self.customers[self.dcustid].location[0],
-                                self.customers[self.dcustid].location[1],
+                                truckidx, rte, wp_indices, 
+                                self.customers[dcustid].location[0],
+                                self.customers[dcustid].location[1],
                                 self.cruise_alt, self.cruise_spd, 
                                 self.vspd_up, self.vspd_down,
                                 self.delivery_time, self.truck_delivery_time)
@@ -476,13 +464,25 @@ class DeliverConquer(Entity):
         mp.create_model()
         mp.solve()
 
-        stack.stack(f"ADDOPERATIONPOINTS {self.truckname}, {rte.wplat[mp.launch_location]}/"
-                    f"{rte.wplon[mp.launch_location]}, SORTIE, {self.sortie_time}, M{self.vehicle_group}, 1, "
-                    f"{self.customers[self.dcustid].location[0]}, {self.customers[self.dcustid].location[1]}, "
-                    f"{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}, {self.cruise_alt / ft }, "
-                    f"{self.cruise_spd / kts}, {self.delivery_time}, {self.rendezvous_time}"    
-                    )
+        bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
+            f'{rte.wplat[mp.launch_location]}/{rte.wplon[mp.launch_location]}', 
+            'SORTIE', self.sortie_time, f'M{self.vehicle_group}', '1',
+            self.customers[dcustid].location[0], 
+            self.customers[dcustid].location[1],
+            f'{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}',
+            self.cruise_alt / ft, self.cruise_spd / kts,
+            self.delivery_time, self.rendezvous_time)
 
-        stack.stack('FF')
-        self.rerouted = False
-        self.called = True
+        # if mp.launch_location == 0 or mp.launch_location == 1:
+        #     _, dist = kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])
+        #     print(dist)
+
+        if not kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])[1] < delivery_dist:
+            stack.stack(f'VNAV {self.truckname} ON')
+            stack.stack(f'LNAV {self.truckname} ON')
+        
+        else:
+            pass
+
+        stack.stack('OP')
+        # stack.stack('FF')

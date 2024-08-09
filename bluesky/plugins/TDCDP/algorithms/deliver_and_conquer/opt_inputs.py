@@ -217,8 +217,6 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, i):
         v_time_down = 2 * v_acc_time_down + v_cruise_time_down
 
     total_time = h_time + v_time_up + v_time_down
-    if i == 1 or i ==20:
-        print(h_time, v_time_up, v_time_down)
 
     return total_time
 

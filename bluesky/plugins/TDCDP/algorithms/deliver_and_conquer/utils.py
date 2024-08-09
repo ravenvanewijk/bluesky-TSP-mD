@@ -131,6 +131,17 @@ def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
     wp_indices = [idx for idx in wp_indices if idx is not None]  # Remove None values
 
     return np.unique(np.array(wp_indices))
+    # return np.array([0, max_wp])
+
+def extract_arguments(data_string, ext):
+    # Remove the prefix
+    if data_string.startswith(ext):
+        data_string = data_string[len(ext):]
+    
+    # Split by commas
+    arguments = data_string.split(',')
+    
+    return arguments
 
 def calculate_area(graph):
     # Extract node coordinates
