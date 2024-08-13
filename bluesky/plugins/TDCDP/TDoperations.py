@@ -147,6 +147,10 @@ class Operations(Entity):
             self.operational_states[acid]['ready2op'] = True
             self.operational_states[acid]['t_a'] = bs.sim.simt
 
+            # Update location of wp such that accuracy==100% at wp
+            acrte.wplat[iactwp], acrte.wplon[iactwp] = \
+                bs.traf.lat[acidx], bs.traf.lon[acidx]
+
         # check whether vehicle is stationary and thus ready to perform operation
         # If the vehicle is not stationary, the operation cannot be performed
         elif 'ready2op' in self.operational_states[acid]:

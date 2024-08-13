@@ -46,6 +46,10 @@ def init_plugin():
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
+
+    def reset_added_cmds(self):
+        self.added_route = []
+        self.added_deliveries = []
     
     @stack.command
     def deliver(self, vehicle_group, M, problem_name, *args):
@@ -91,6 +95,8 @@ class DeliverConquer(Entity):
 
         # Create a copy of the tour
         self.current_route = self.model.P[0].tour[:]
+        self.added_route = []
+        self.added_deliveries = []
         # set called to True such that the drone routing begins
         self.called = True
 
@@ -309,7 +315,7 @@ class DeliverConquer(Entity):
 
     def remove_commands(self, dcustid, ncustid):
         """Removed commands from the dictionaries where commands are stored.
-        This must be done when customers are served, such they these commands
+        This must be done when customers are served, such that these commands
         will not be parsed again.
         """
         # Alter route and remove commands from dictionaries
@@ -370,7 +376,8 @@ class DeliverConquer(Entity):
         dcustid = self.model.P[0].tour[custidx]
         if dcustid == 0:
             # Depot node, do not serve with drone
-            # stack.stack("OP")
+            stack.stack("OP")
+            stack.stack("FF")
             return
 
         ncustid = self.model.P[0].tour[custidx + 1]
@@ -397,6 +404,7 @@ class DeliverConquer(Entity):
         # Delete old truck route
         print("Removing old route...")
         bs.traf.ap.route[truckidx].delrte(truckidx)
+        self.reset_added_cmds()
         print("Route removal done.")
         
         road_route, spd_lims = roadroute(self.G, (bs.traf.lat[truckidx], bs.traf.lon[truckidx]), \
@@ -410,19 +418,7 @@ class DeliverConquer(Entity):
 
         bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
 
-        print("Adding new route...")
-        for u,v in zip(self.current_route, self.current_route[1:]):
-            args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
-                                    f'ADDTDWAYPOINTS {self.truckname},')
-            bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
-        print("Done adding new route. Adding operations...")
-
-        for delivery_cmd in self.delivery_cmds:
-            args = extract_arguments(self.delivery_cmds[delivery_cmd],
-                                    f'ADDOPERATIONPOINTS {self.truckname},')
-            bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
-
-        print("Done adding operations.")
+        self.add_routepiece()
         self.deploy(truckidx, rte, dcustid)
 
     def deploy(self, truckidx, rte, dcustid):
@@ -435,10 +431,11 @@ class DeliverConquer(Entity):
 
         The routing commands are directly inserted to the bs stack.
         """
-        # Define look ahead window: drone can be picked up a maximum of 3 
+        # Define look ahead window: drone can be picked up a maximum of M + 1 
         # customers later than the current drone customer
         cust_max = self.model.P[0].tour\
-                            [min(self.model.P[0].tour.index(dcustid) + 3, 
+                            [min(self.model.P[0].tour.index(dcustid) + \
+                                int(self.M) + 1, 
                                 len(self.model.P[0].tour) - 1)]
         cust_max_loc = self.customers[cust_max].location
         max_wp = find_index_with_tolerance(cust_max_loc,
@@ -477,12 +474,40 @@ class DeliverConquer(Entity):
         #     _, dist = kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])
         #     print(dist)
 
-        if not kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])[1] < delivery_dist:
-            stack.stack(f'VNAV {self.truckname} ON')
-            stack.stack(f'LNAV {self.truckname} ON')
+        # if not kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])[1] < delivery_dist:
+        stack.stack(f'VNAV {self.truckname} ON')
+        stack.stack(f'LNAV {self.truckname} ON')
         
-        else:
-            pass
+        # else:
+        #     pass
 
         stack.stack('OP')
-        # stack.stack('FF')
+        stack.stack('FF')
+    
+    @timed_function(dt = bs.sim.simdt * 10)
+    def add_routepiece(self):
+        if not self.called:
+            return
+
+        try:
+            truckidx = bs.traf.id.index(self.truckname)
+        except ValueError:
+            return
+        window = int(self.M) + 1
+        for u,v in zip(self.current_route[:window], 
+            self.current_route[1:1 + window]):
+            if (u, v) in self.added_route:
+                continue
+            args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
+                                    f'ADDTDWAYPOINTS {self.truckname},')
+            bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
+            self.added_route.append((u, v))
+
+        for delivery_cmd in self.delivery_cmds:
+            if delivery_cmd in self.added_deliveries:
+                continue
+            if int(delivery_cmd) in self.current_route[:1 + window]:
+                args = extract_arguments(self.delivery_cmds[delivery_cmd],
+                                    f'ADDOPERATIONPOINTS {self.truckname},')
+                bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
+                self.added_deliveries.append(delivery_cmd)
