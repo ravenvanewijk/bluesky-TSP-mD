@@ -1,3 +1,20 @@
+"""
+This script is the core of the DC (delivery and conquer) plugin
+
+Its goal is to perform live routing of a truck with multiple drones to its 
+disposal. Instead of regular routing (which is all determined beforehand), this
+script determines launch and retrieval locations of drones on the go.
+
+It requires the following plugins:
+
+--> 'SPDAP', 'OPERATIONS', 'TDACTWP', 'TDAUTOPILOT', 'TDRoute'
+
+Add these to the settings.cfg along with the name of this plugin itself ('DC')
+
+CREATED BY RAVEN VAN EWIJK AS A PART OF THE AEROSPACE ENGINEERING MASTER'S 
+THESIS.
+"""
+
 import bluesky as bs
 import osmnx as ox
 import numpy as np
@@ -20,11 +37,11 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
-    raw_data
+    raw_data,
+    calc_truck_ETA
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import PACO
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
-    LR_Optimizer,
     LR_PuLP
 )
 from bluesky.plugins.TDCDP.TDoperations import delivery_dist
@@ -46,6 +63,7 @@ def init_plugin():
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
+        self.timeout = 0
 
     def reset_added_cmds(self):
         self.added_route = []
@@ -89,6 +107,7 @@ class DeliverConquer(Entity):
         # Dictionaries to store the text, will be used later
         self.routing_cmds = {}
         self.delivery_cmds = {}
+
         self.calc_basic_tsp(problem_name)
         self.route_basic_tsp()
         self.gen_lr_locs()
@@ -97,7 +116,7 @@ class DeliverConquer(Entity):
         self.current_route = self.model.P[0].tour[:]
         self.added_route = []
         self.added_deliveries = []
-        # set called to True such that the drone routing begins
+        # set called to True such that the routing begins
         self.called = True
 
     def spawn_truck(self, truckname):
@@ -107,6 +126,7 @@ class DeliverConquer(Entity):
             - truckname: str, the name of the truck
         """
         self.truckname = truckname
+        self.recon_name = "RECON"
         bs.traf.cre(self.truckname, 'Truck', self.customers[0].location[0], \
                     self.customers[0].location[1], 0, 0, 0)
         stack.stack(f'COLOUR {self.truckname} RED')
@@ -145,6 +165,16 @@ class DeliverConquer(Entity):
                                             'reversed': str_interpret})
         
     def gen_lr_locs(self, cust_only = False):
+        """Generate locations where an operation, i.e. a sortie or rendezvous
+        are possible on the graph that has been loaded
+        
+        args: type, description
+            - cust_only: bool, whether or not customer locations are the 
+                only locations where an operation can be conducted"""
+
+        if not self.G:
+            raise Exception("Graph G should first be loaded. Run the command\
+                            load_graph first with a correct filepath.")
         # Extract locations
         locations = [Point(customer.location[1], customer.location[0]) 
                         for customer in self.customers]
@@ -220,10 +250,7 @@ class DeliverConquer(Entity):
         for delivery_cmd in delivery_cmds:
             stack.stack(delivery_cmd)
 
-        # stack.stack(f"VNAV {self.truckname} ON")
-        # stack.stack(f"LNAV {self.truckname} ON")
         stack.stack("TRAIL ON")
-
         stack.stack("OP")
 
     def construct_scenario(self, road_route, spd_lims):
@@ -293,7 +320,7 @@ class DeliverConquer(Entity):
 
         return scen_text
 
-    def plot_graph(self,lines=[], cust=False):
+    def plot_graph(self, lines=[], cust=False):
         """Plots the graph of the selected gpkg file as well as customer 
         locations"""
         # Plot city graph
@@ -324,69 +351,81 @@ class DeliverConquer(Entity):
             self.routing_cmds.pop(f'0-{dcustid}')
             self.current_route.remove(0)
         except KeyError:
-            pass 
-        self.routing_cmds.pop(f'{dcustid}-{ncustid}')
-        self.delivery_cmds.pop(f'{dcustid}')
+            pass
+        try:
+            self.routing_cmds.pop(f'{dcustid}-{ncustid}')
+        except KeyError:
+            pass
+        try:
+            self.delivery_cmds.pop(f'{dcustid}')
+        except KeyError:
+            pass
         # Alter current route of the truck
-        while not self.current_route.index(dcustid) == 0:
-            # Account for the case where truck has made one or more deliveries
-            # During the delivery of the drone(s)
-            to_del = self.current_route[0]
-            self.current_route.remove(to_del)
-            self.delivery_cmds.pop(f'{to_del}')
-
-        self.current_route.remove(dcustid)
+        if dcustid in self.current_route:
+            while not self.current_route.index(dcustid) == 0:
+                # Account for the case where truck has made one or more deliveries
+                # During the delivery of the drone(s)
+                to_del = self.current_route[0]
+                self.current_route.remove(to_del)
+                self.delivery_cmds.pop(f'{to_del}')
+        try:
+            self.current_route.remove(dcustid)
+        except ValueError:
+            pass
 
     @timed_function(dt=bs.sim.simdt)
     def calc_savings(self):
         """Calculates the potential savings of serving next customer by drone
         If time can be saved, a drone will be launched. Else, nothing is done
         """
-        if not self.called:
+        if not self.called or self.timeout > 0:
+            self.timeout -= 1
             return
+
+        # Drones that are otw to their customers should also be counted
+        # Get customers served from operations module
+        custidx = 1 + bs.traf.Operations.custs_served + \
+            sum(1 for drone in 
+            bs.traf.Operations.drone_manager.active_drones.values()
+            if not drone['del_done'])
+
+        dcustid = self.model.P[0].tour[custidx]
+        ncustid = self.model.P[0].tour[min(custidx + 1,     
+                                        len(self.model.P[0].tour) - 1)]
+
+        if dcustid != self.current_route[0] and self.current_route[0] != 0 \
+            and dcustid in self.current_route:
+            # Remove commands if truck has made deliveries without launching
+            # a drone
+            self.remove_commands(dcustid, ncustid)
 
         dronecount = len(bs.traf.Operations.drone_manager.active_drones)
 
         if dronecount >= int(self.M):
             return
-
-        # Stop the simulation, we need to determine next drone's launch point
-        stack.stack('HOLD')
-        self.reroute()
-
-    def reroute(self):
-        """Reroutes the truck when the next customer can be served by drone"""
+            
+        # Enter phase 2 if we have a drone at our disposal
+        # Phase 2 is the reconaissance phase to scout if we can save time
+        #_______________________________PHASE 2_______________________________
         try:
             truckidx = bs.traf.id.index(self.truckname)
         except ValueError:
-            return
-
+            # Truck is deleted, stop the routing
+            self.called = False
+            return 
         rte = bs.traf.ap.route[truckidx]
-        # self.copy = rte.wplat[:]
-
         wplats = list(map(lambda x: round(x, ndigits=6), rte.wplat))
         wplons = list(map(lambda x: round(x, ndigits=6), rte.wplon))
 
-        # Get customers served from operations module
-        # Drones that are otw to their customers should also be counted
-        custidx = 1 + bs.traf.Operations.custs_served + \
-                    sum(1 for drone in 
-                    bs.traf.Operations.drone_manager.active_drones.values() 
-                    if drone['del_done'])
-        dcustid = self.model.P[0].tour[custidx]
-        if dcustid == 0:
+        if dcustid == 0 or not self.customers[dcustid].drone_eligible:
             # Depot node, do not serve with drone
-            stack.stack("OP")
-            stack.stack("FF")
+            # self.resume()
             return
 
-        ncustid = self.model.P[0].tour[custidx + 1]
-        # if not self.customers[custid].drone_eligible:
-        #     return
         # Terminology:
         # - dcustid: drone customer id (to be handled by a drone)
         # - ncustid: next customer id (after the drone customer)
-        # - ocustid: the origin customer that is being routed from
+
         dcust_latlon = self.customers[dcustid].location
         ncust_latlon = self.customers[ncustid].location
         try:
@@ -399,13 +438,64 @@ class DeliverConquer(Entity):
         except ValueError:
             raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
 
-        self.remove_commands(dcustid, ncustid)
+        
 
-        # Delete old truck route
-        print("Removing old route...")
-        bs.traf.ap.route[truckidx].delrte(truckidx)
-        self.reset_added_cmds()
-        print("Route removal done.")
+        # Create second truck to perform calculations
+        bs.traf.cre(self.recon_name, "Truck", bs.traf.lat[truckidx], 
+                                        bs.traf.lon[truckidx],
+                                        bs.traf.hdg[truckidx],
+                                        bs.traf.alt[truckidx],
+                                        bs.traf.tas[truckidx])
+        reconidx = bs.traf.id.index(self.recon_name)
+
+        self.reroute(reconidx, dcustid, ncustid, recon=True)
+
+        rte_recon = bs.traf.ap.route[reconidx]
+
+        # Find out what wp should be looked up to match the next customer
+        # in both occasions
+        reconwpidx = find_index_with_tolerance(self.customers[ncustid].location,
+                                    rte_recon.wplat, rte_recon.wplon)
+
+        truckwpidx = find_index_with_tolerance(self.customers[ncustid].location, 
+                                    rte.wplat, rte.wplon)
+
+        # Calculate the eta to next customer for both cases
+        eta_regular = calc_truck_ETA(truckidx, truckwpidx)
+        eta_modified = calc_truck_ETA(reconidx, reconwpidx)
+
+        bs.traf.delete(reconidx)
+
+        success = 'sufficient savings' if eta_modified<eta_regular else 'insufficient savings'
+        print(f'Reconaissance successfull, yielded in {success}')
+        if eta_regular < eta_modified:
+            # We asserted the potential of serving next customer by drone
+            # This however adds time to the makespan
+            # Therefore we dont change plans
+            # Set timeout such that we don't immediately try again
+            # set timeout in seconds
+            self.timeout = 180 / bs.sim.simdt
+            return
+            
+        print(f'Serving customer {dcustid} by drone')
+        # Stop the simulation, we need to determine next drone's launch point
+        # stack.stack('HOLD')
+        # Reroute the 'real' truck
+        self.reroute(truckidx, dcustid, ncustid)
+
+    def reroute(self, truckidx, dcustid, ncustid, recon=False):
+        """Reroutes the truck when the next customer can be served by drone
+       
+        Args: type, description
+            - truckidx: int, bs identifyer of the truck 
+            - dcustid: int, id of the drone customer being served
+            - ncustid: int, id of next customer 
+            - recon: bool, whether or not the deployment is using a 
+                reconaissance truck"""
+        if not recon:
+             # Delete old truck route
+            bs.traf.ap.route[truckidx].delrte(truckidx)
+            self.reset_added_cmds()
         
         road_route, spd_lims = roadroute(self.G, (bs.traf.lat[truckidx], bs.traf.lon[truckidx]), \
                                                 self.customers[ncustid].location)
@@ -417,11 +507,14 @@ class DeliverConquer(Entity):
                                     f'ADDTDWAYPOINTS {self.truckname},')
 
         bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
+        if recon:
+            self.add_routepiece(self.recon_name)
+        else:
+            self.remove_commands(dcustid, ncustid)
+            self.add_routepiece()
+        self.deploy(truckidx, dcustid, recon)
 
-        self.add_routepiece()
-        self.deploy(truckidx, rte, dcustid)
-
-    def deploy(self, truckidx, rte, dcustid):
+    def deploy(self, truckidx, dcustid, recon):
         """
         ________________________________PHASE 3________________________________
 
@@ -429,8 +522,17 @@ class DeliverConquer(Entity):
         drone. A PuLP model is activated to determine the optimal launch and
         retrieval location of the drone.
 
-        The routing commands are directly inserted to the bs stack.
+        The routing commands are directly inserted to the bs stack,
+        such that these can be used for calculations as well as to ensure 
+        these commands can directly be obeyed.
+
+        Args: type, description
+            - truckidx: int, bs identifyer of the truck 
+            - dcustid: int, number of the drone customer being served
+            - recon: bool, whether or not the deployment is using a 
+                reconaissance truck
         """
+        rte = bs.traf.ap.route[truckidx]
         # Define look ahead window: drone can be picked up a maximum of M + 1 
         # customers later than the current drone customer
         cust_max = self.model.P[0].tour\
@@ -453,13 +555,21 @@ class DeliverConquer(Entity):
                                 self.vspd_up, self.vspd_down,
                                 self.delivery_time, self.truck_delivery_time)
 
-        # m = LR_Optimizer(L, P, t_ij, t_jk, T_i, T_k, T_ik, B)
-        # m.create_model()
-        # m.solve()
-
+        # Call the linear programming module to solve the problem
+        # This gives us an optimal launch and retrieval location
         mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, 15, 10, B)
         mp.create_model()
         mp.solve()
+
+        if recon:
+            # Stop here if it is just a reconaissance run
+            # We dont actually want to add the operation, else a drone will be
+            # stored in momory
+            self.resume()
+            return
+
+        # Pass the optimized operation and its location to the routing module
+        # This module will take care of the entire operation
 
         bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
             f'{rte.wplat[mp.launch_location]}/{rte.wplon[mp.launch_location]}', 
@@ -470,44 +580,71 @@ class DeliverConquer(Entity):
             self.cruise_alt / ft, self.cruise_spd / kts,
             self.delivery_time, self.rendezvous_time)
 
-        # if mp.launch_location == 0 or mp.launch_location == 1:
-        #     _, dist = kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])
-        #     print(dist)
-
-        # if not kwikqdrdist(bs.traf.lat[0], bs.traf.lon[0], rte.wplat[mp.launch_location], rte.wplon[mp.launch_location])[1] < delivery_dist:
-        stack.stack(f'VNAV {self.truckname} ON')
-        stack.stack(f'LNAV {self.truckname} ON')
-        
-        # else:
-        #     pass
-
-        stack.stack('OP')
-        stack.stack('FF')
+        # Continue the simulation
+        self.resume()
     
     @timed_function(dt = bs.sim.simdt * 10)
-    def add_routepiece(self):
+    def add_routepiece(self, recon=None):
+        """Function to add routepiece(s) and delivery commands.
+        Keeps into account the commands that have already been added.
+        If it is a reconaissance run, then we dont want to keep these into 
+        account, and just add the route.
+        If its not a reconaissance run but a real run, we also want to save
+        the commands that are given such that they are not added again.
+        
+        Args: type, description
+            - recon: str (if used), reconaissance truck name"""
+
         if not self.called:
             return
-
+        # check what truck should be routed, the real or reconaissance
+        truckname = self.truckname if recon is None else recon
         try:
-            truckidx = bs.traf.id.index(self.truckname)
+            truckidx = bs.traf.id.index(truckname)
         except ValueError:
             return
-        window = int(self.M) + 1
+        # define window of customers that are being added to the route.
+        # Larger window makes bs slower, but gives more opportunities for 
+        # L&R operations
+        window = int(self.M) + 2
+
         for u,v in zip(self.current_route[:window], 
             self.current_route[1:1 + window]):
-            if (u, v) in self.added_route:
+            if (u, v) in self.added_route and recon is None:
+                # If the route already has been added, skip the routepiece
                 continue
+            # Else continue and add the route
+            # Fetch argument from the string
             args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
                                     f'ADDTDWAYPOINTS {self.truckname},')
+            # Parse the command directly, this way it is added without a 
+            # bs timetick
             bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
-            self.added_route.append((u, v))
+            if recon is None:
+                # Store the route such that it will not be added again
+                self.added_route.append((u, v))
 
         for delivery_cmd in self.delivery_cmds:
-            if delivery_cmd in self.added_deliveries:
+            if delivery_cmd in self.added_deliveries and recon is None:
+                # If the delivery already has been added, skip the routepiece
                 continue
+            # Else continue and add the delivery
+            # ...But first check whether the wp of that delivery has been
+            # given to the truck already (should be in the window)
             if int(delivery_cmd) in self.current_route[:1 + window]:
+                # Fetch arguments from the string
                 args = extract_arguments(self.delivery_cmds[delivery_cmd],
                                     f'ADDOPERATIONPOINTS {self.truckname},')
+                # Parse the command directly, this way it is added without a 
+                # bs timetick
                 bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
-                self.added_deliveries.append(delivery_cmd)
+                if recon is None:
+                    # Store the delivery such that it will not be added again
+                    self.added_deliveries.append(delivery_cmd)
+    
+    def resume(self):
+        """Method to resume the simulation"""
+        stack.stack(f'VNAV {self.truckname} ON')
+        stack.stack(f'LNAV {self.truckname} ON')
+        # stack.stack("OP")
+        stack.stack("FF")
