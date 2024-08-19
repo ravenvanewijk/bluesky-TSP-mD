@@ -122,6 +122,9 @@ class TDRoute(Route):
                                         acrte.wplon[wpid_k], 
                                         wpname_k, args[5], args[6], 
                                         args[7], args[8])
+            
+            bs.traf.ap.route[vehicleidx].addoperationpoints(vehicleidx, 
+                                wpname_k, 'RENDEZVOUS', args[8], child)
 
             if acrte.children[wpid][0] is None:
                 acrte.children[wpid] = [child]

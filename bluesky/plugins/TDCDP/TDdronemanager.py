@@ -85,7 +85,7 @@ class DroneManager(Entity):
         # Add operation for the rendezvous
         recovery_t = data['recovery_time']
         stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_k']}/{data['lon_k']} RENDEZVOUS {recovery_t}")
-        stack.stack(f"ADDOPERATIONPOINTS {data['truck']} {data['wpname_k']} RENDEZVOUS {recovery_t} {drone_name}")
+        # stack.stack(f"ADDOPERATIONPOINTS {data['truck']} {data['wpname_k']} RENDEZVOUS {recovery_t} {drone_name}")
 
     def complete_sortie(self, drone_name):
         """Ready up a drone rendezvous with drone name, such that it can be picked up by its truck.

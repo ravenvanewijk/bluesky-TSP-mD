@@ -251,7 +251,7 @@ class DeliverConquer(Entity):
             op_text = (f"ADDOPERATIONPOINTS {self.truckname},"
                 f"{self.customers[v].location[0]}/"
                 f"{self.customers[v].location[1]},"
-                f"DELIVERY,{self.delivery_time}")
+                f"DELIVERY,{self.truck_delivery_time}")
             delivery_cmds.append(op_text)
             self.delivery_cmds[f'{v}'] = op_text
 
@@ -403,8 +403,9 @@ class DeliverConquer(Entity):
 
         # if dcustid != self.current_route[0] and self.current_route[0] != 0 \
         #     and dcustid in self.current_route:
-        if dcustid != self.current_route[0] \
-            and dcustid in self.current_route:
+        # if dcustid != self.current_route[0] \
+        #     and dcustid in self.current_route:
+        if len(self.current_route) + custidx > len(self.model.P[0].tour):
             # Remove commands if truck has made deliveries without launching
             # a drone
             self.remove_commands(dcustid, ncustid)
@@ -476,8 +477,8 @@ class DeliverConquer(Entity):
                     self.customers[max_cust].location, rte.wplat, rte.wplon)
 
         # Calculate the eta to next customer for both cases
-        eta_regular = calc_truck_ETA(truckidx, truckwpidx)
-        eta_modified = calc_truck_ETA(reconidx, reconwpidx)
+        # eta_regular = calc_truck_ETA(truckidx, truckwpidx)
+        # eta_modified = calc_truck_ETA(reconidx, reconwpidx)
 
         eta_r = calc_truck_ETA2(self.trucketa[:truckwpidx + 1], 
                                 rte.operation_duration[:truckwpidx + 1])
@@ -486,18 +487,19 @@ class DeliverConquer(Entity):
 
         bs.traf.Operations.recondelete(self.recon_name)
 
-        success = 'sufficient savings' if eta_modified<eta_regular else \
+        success = 'sufficient savings' if eta_m<eta_r else \
                     'insufficient savings'
         print(f'Reconaissance successfull, yielded in {success}')
-        if eta_regular < eta_modified:
+        if eta_r < eta_m:
             # We asserted the potential of serving next customer by drone
             # This however adds time to the makespan
             # Therefore we dont change plans
             # Set timeout such that we don't immediately try again
-            # set timeout in seconds
+            # timeout in seconds
             self.timeout = 180 / bs.sim.simdt
             return
-            
+        # The modified time reduces the makespan
+        # Therefore we change the plans and serve the next customer by drone
         print(f'Serving customer {dcustid} by drone')
         # Stop the simulation, we need to determine next drone's launch point
         # stack.stack('HOLD')
@@ -538,7 +540,8 @@ class DeliverConquer(Entity):
             self.trucketa.extend(etas)
             self.add_routepiece()
 
-        return self.deploy(truckidx, dcustid)
+        max_cust_considered = self.deploy(truckidx, dcustid)
+        return max_cust_considered
 
     def deploy(self, truckidx, dcustid):
         """
@@ -609,7 +612,8 @@ class DeliverConquer(Entity):
             self.delivery_time, self.rendezvous_time)
 
         # Continue the simulation
-        self.resume()
+        if not recon:
+            self.resume()
         
         return cust_max
     
