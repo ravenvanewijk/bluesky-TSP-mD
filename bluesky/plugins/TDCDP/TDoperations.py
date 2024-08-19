@@ -301,3 +301,17 @@ class Operations(Entity):
                 self.truckdelete(truck)
                 self.trkdelqueue.remove(truck)
         return True
+
+    def recondelete(self, idx):
+        """Delete a recon truck after it has scouted its route and operations"""
+        id = bs.traf.id.index(idx)
+        bs.traf.delete(id)
+        # Update number of aircraft
+        bs.traf.ntraf = len(bs.traf.lat)
+
+        # Create a list of keys to delete where 'truck' matches the given value
+        drones_to_del = [key for key, drone in self.drone_manager.active_drones.items() if drone['truck'] == idx]
+
+        # Remove those keys from the dictionary
+        for key in drones_to_del:
+            del self.drone_manager.active_drones[key]

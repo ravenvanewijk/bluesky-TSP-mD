@@ -38,7 +38,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
     raw_data,
-    calc_truck_ETA
+    calc_truck_ETA,
+    calc_truck_ETA2
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import PACO
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
@@ -64,10 +65,14 @@ class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
         self.timeout = 0
+        self.trucketa = []
+        self.reconeta = []
 
     def reset_added_cmds(self):
         self.added_route = []
         self.added_deliveries = []
+        self.trucketa = []
+        self.reconeta = []
     
     @stack.command
     def deliver(self, vehicle_group, M, problem_name, *args):
@@ -104,9 +109,10 @@ class DeliverConquer(Entity):
         self.vspd_down = np.abs(d_data['vs_min'])
         #________________________________
 
-        # Dictionaries to store the text, will be used later
+        # Dictionaries to store the text and etas, will be used later
         self.routing_cmds = {}
         self.delivery_cmds = {}
+        self.routing_etas = {}
 
         self.calc_basic_tsp(problem_name)
         self.route_basic_tsp()
@@ -227,7 +233,7 @@ class DeliverConquer(Entity):
         stack.stack("HOLD")
         delivery_cmds = []
         for u, v in zip(self.model.P[0].tour, self.model.P[0].tour[1:]):
-            road_route, spd_lims = roadroute(self.G, 
+            road_route, spd_lims, etas = roadroute(self.G, 
                                             self.customers[u].location,
                                             self.customers[v].location)
             road_route_merged = linemerge(road_route)
@@ -237,6 +243,8 @@ class DeliverConquer(Entity):
                             road_route_merged.xy[0][0]], 6)
             wp_commands = self.construct_scenario(road_route_merged, spd_lims)
             self.routing_cmds[f'{u}-{v}'] = wp_commands
+            self.routing_etas[f'{u}-{v}'] = etas
+            self.trucketa.extend(etas)
             stack.stack(wp_commands)
             if v == 0:
                 continue
@@ -330,14 +338,15 @@ class DeliverConquer(Entity):
             locs_scatter = ax.scatter([point.x for _, point in self.lr_locs.items()],
                                             [point.y for _, point in self.lr_locs.items()],
                                             c='red', s=8, zorder=5, label='L&R locations')
+            # Show the plot with a legend
+            ax.legend(handles=[locs_scatter])
 
         for line in lines:
             x, y = line.xy
             ax.plot(x, y, marker='o')  # Plot the line with markers at vertices
             ax.plot(x[-1],y[-1],'rs') 
 
-        # Show the plot with a legend
-        ax.legend(handles=[locs_scatter])
+
         plt.show()
 
     def remove_commands(self, dcustid, ncustid):
@@ -378,8 +387,7 @@ class DeliverConquer(Entity):
         """Calculates the potential savings of serving next customer by drone
         If time can be saved, a drone will be launched. Else, nothing is done
         """
-        if not self.called or self.timeout > 0:
-            self.timeout -= 1
+        if not self.called:
             return
 
         # Drones that are otw to their customers should also be counted
@@ -393,11 +401,17 @@ class DeliverConquer(Entity):
         ncustid = self.model.P[0].tour[min(custidx + 1,     
                                         len(self.model.P[0].tour) - 1)]
 
-        if dcustid != self.current_route[0] and self.current_route[0] != 0 \
+        # if dcustid != self.current_route[0] and self.current_route[0] != 0 \
+        #     and dcustid in self.current_route:
+        if dcustid != self.current_route[0] \
             and dcustid in self.current_route:
             # Remove commands if truck has made deliveries without launching
             # a drone
             self.remove_commands(dcustid, ncustid)
+        
+        if self.timeout > 0:
+            self.timeout -= 1
+            return
 
         dronecount = len(bs.traf.Operations.drone_manager.active_drones)
 
@@ -448,25 +462,32 @@ class DeliverConquer(Entity):
                                         bs.traf.tas[truckidx])
         reconidx = bs.traf.id.index(self.recon_name)
 
-        self.reroute(reconidx, dcustid, ncustid, recon=True)
+        max_cust = self.reroute(reconidx, dcustid, ncustid)
 
         rte_recon = bs.traf.ap.route[reconidx]
 
         # Find out what wp should be looked up to match the next customer
         # in both occasions
-        reconwpidx = find_index_with_tolerance(self.customers[ncustid].location,
-                                    rte_recon.wplat, rte_recon.wplon)
+        reconwpidx = find_index_with_tolerance(
+                    self.customers[max_cust].location, 
+                    rte_recon.wplat, rte_recon.wplon)
 
-        truckwpidx = find_index_with_tolerance(self.customers[ncustid].location, 
-                                    rte.wplat, rte.wplon)
+        truckwpidx = find_index_with_tolerance(
+                    self.customers[max_cust].location, rte.wplat, rte.wplon)
 
         # Calculate the eta to next customer for both cases
         eta_regular = calc_truck_ETA(truckidx, truckwpidx)
         eta_modified = calc_truck_ETA(reconidx, reconwpidx)
 
-        bs.traf.delete(reconidx)
+        eta_r = calc_truck_ETA2(self.trucketa[:truckwpidx + 1], 
+                                rte.operation_duration[:truckwpidx + 1])
+        eta_m = calc_truck_ETA2(self.reconeta[:reconwpidx + 1], 
+                                rte_recon.operation_duration[:reconwpidx + 1]) 
 
-        success = 'sufficient savings' if eta_modified<eta_regular else 'insufficient savings'
+        bs.traf.Operations.recondelete(self.recon_name)
+
+        success = 'sufficient savings' if eta_modified<eta_regular else \
+                    'insufficient savings'
         print(f'Reconaissance successfull, yielded in {success}')
         if eta_regular < eta_modified:
             # We asserted the potential of serving next customer by drone
@@ -483,7 +504,7 @@ class DeliverConquer(Entity):
         # Reroute the 'real' truck
         self.reroute(truckidx, dcustid, ncustid)
 
-    def reroute(self, truckidx, dcustid, ncustid, recon=False):
+    def reroute(self, truckidx, dcustid, ncustid):
         """Reroutes the truck when the next customer can be served by drone
        
         Args: type, description
@@ -492,13 +513,15 @@ class DeliverConquer(Entity):
             - ncustid: int, id of next customer 
             - recon: bool, whether or not the deployment is using a 
                 reconaissance truck"""
+        recon = True if bs.traf.id[truckidx] == self.recon_name else False
         if not recon:
              # Delete old truck route
             bs.traf.ap.route[truckidx].delrte(truckidx)
             self.reset_added_cmds()
         
-        road_route, spd_lims = roadroute(self.G, (bs.traf.lat[truckidx], bs.traf.lon[truckidx]), \
-                                                self.customers[ncustid].location)
+        road_route, spd_lims, etas = roadroute(self.G, 
+                            (bs.traf.lat[truckidx], bs.traf.lon[truckidx]), \
+                            self.customers[ncustid].location)
 
         road_route_merged = linemerge(road_route)
         wp_commands = self.construct_scenario(road_route_merged, spd_lims)
@@ -508,13 +531,16 @@ class DeliverConquer(Entity):
 
         bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
         if recon:
+            self.reconeta.extend(etas)
             self.add_routepiece(self.recon_name)
         else:
             self.remove_commands(dcustid, ncustid)
+            self.trucketa.extend(etas)
             self.add_routepiece()
-        self.deploy(truckidx, dcustid, recon)
 
-    def deploy(self, truckidx, dcustid, recon):
+        return self.deploy(truckidx, dcustid)
+
+    def deploy(self, truckidx, dcustid):
         """
         ________________________________PHASE 3________________________________
 
@@ -527,7 +553,7 @@ class DeliverConquer(Entity):
         these commands can directly be obeyed.
 
         Args: type, description
-            - truckidx: int, bs identifyer of the truck 
+            - truckidx: int, bs identifyer of the truck or recon truck
             - dcustid: int, number of the drone customer being served
             - recon: bool, whether or not the deployment is using a 
                 reconaissance truck
@@ -547,8 +573,17 @@ class DeliverConquer(Entity):
         # Get matching LR locations on route
         wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
 
+        # conditional parameters
+        if bs.traf.id[truckidx] == self.recon_name:
+            eta = self.reconeta
+            recon = True
+        else:
+            eta = self.trucketa
+            recon = False
+        
         L, P, t_ij, t_jk, T_i, T_k, T_ik, B = calc_inputs(
-                                truckidx, rte, wp_indices, 
+                                truckidx, rte, eta, rte.operation_duration, 
+                                wp_indices, 
                                 self.customers[dcustid].location[0],
                                 self.customers[dcustid].location[1],
                                 self.cruise_alt, self.cruise_spd, 
@@ -560,13 +595,6 @@ class DeliverConquer(Entity):
         mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, 15, 10, B)
         mp.create_model()
         mp.solve()
-
-        if recon:
-            # Stop here if it is just a reconaissance run
-            # We dont actually want to add the operation, else a drone will be
-            # stored in momory
-            self.resume()
-            return
 
         # Pass the optimized operation and its location to the routing module
         # This module will take care of the entire operation
@@ -582,6 +610,8 @@ class DeliverConquer(Entity):
 
         # Continue the simulation
         self.resume()
+        
+        return cust_max
     
     @timed_function(dt = bs.sim.simdt * 10)
     def add_routepiece(self, recon=None):
@@ -617,6 +647,10 @@ class DeliverConquer(Entity):
             # Fetch argument from the string
             args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
                                     f'ADDTDWAYPOINTS {self.truckname},')
+            if recon is None:
+                self.trucketa.extend(self.routing_etas[f'{u}-{v}'])
+            else:
+                self.reconeta.extend(self.routing_etas[f'{u}-{v}'])
             # Parse the command directly, this way it is added without a 
             # bs timetick
             bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
@@ -644,7 +678,8 @@ class DeliverConquer(Entity):
     
     def resume(self):
         """Method to resume the simulation"""
-        stack.stack(f'VNAV {self.truckname} ON')
-        stack.stack(f'LNAV {self.truckname} ON')
+        if self.truckname not in bs.traf.Operations.operational_states:
+            stack.stack(f'VNAV {self.truckname} ON')
+            stack.stack(f'LNAV {self.truckname} ON')
         # stack.stack("OP")
         stack.stack("FF")

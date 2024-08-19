@@ -10,8 +10,8 @@ with open('bluesky/resources/performance/OpenAP/rotor/aircraft.json') as json_da
     raw_data = json.load(json_data)
     json_data.close()
 
-def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up, 
-                vspd_down, delivery_time, truck_delivery_time):
+def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt, 
+                hspd, vspd_up, vspd_down, delivery_time, truck_delivery_time):
     """
     Calculates various inputs required for routing, 
     including truck and drone ETAs.
@@ -51,7 +51,8 @@ def calc_inputs(acidx, rte, wp_indeces, custlat, custlon, alt, hspd, vspd_up,
     t_jk = {}
 
     for i in wp_indeces:
-        truck_t = calc_truck_ETA(acidx, i)
+        # truck_t = calc_truck_ETA(acidx, i)
+        truck_t = calc_truck_ETA2(eta[:i + 1], op_duration[:i + 1])
         T_i[i] = truck_t
         # + launch time
         T_k[i] = truck_t + truck_delivery_time
@@ -216,7 +217,14 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, i):
         v_cruise_time_down = v_cruise_dist_down / vspd_down
         v_time_down = 2 * v_acc_time_down + v_cruise_time_down
 
-    total_time = h_time + v_time_up + v_time_down
+    total_time = h_time + v_time_up + v_time_down                                    
 
     return total_time
 
+
+def calc_truck_ETA2(eta, op_duration):
+    # Add operational times
+    time_per_wp = list(map(lambda e, o: e + sum(filter(None, o)) if o and 
+                                o[0] is not None else e, eta, op_duration))
+    return sum(time_per_wp)
+     
