@@ -4,6 +4,8 @@ import networkx as nx
 import numpy as np
 import geopandas as gpd
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 from shapely.geometry import Polygon, Point
 from warnings import warn
 from osmnx.convert import graph_to_gdfs
@@ -172,6 +174,21 @@ def calculate_area(graph):
     area_sqm = gdf_utm['geometry'].area.iloc[0]
 
     return area_sqm
+
+def plot_route(G, lats, lons, title=None, labels=None):
+    fig, ax = ox.plot_graph(G, show=False, close=False)
+    if not len(lats) == len(lons) or len(lats) > len(mcolors.BASE_COLORS):
+        return
+    colors = list(mcolors.BASE_COLORS.values()) 
+    for i in np.arange(len(lats)):
+        try:
+            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i], 
+                                                    label=labels[i])
+        except:
+            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i])
+    plt.legend()
+    plt.title(title)
+    plt.show()
 
 class Customer:
     """

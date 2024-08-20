@@ -12,7 +12,7 @@ from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDdronemanager import DroneManager, get_wpname
 from bluesky.plugins.TDCDP.data_logger import DataLogger
 
-delivery_dist = 0.00025
+delivery_dist = 0.00025 * 2
 
 def init_plugin():
     # Configuration parameters

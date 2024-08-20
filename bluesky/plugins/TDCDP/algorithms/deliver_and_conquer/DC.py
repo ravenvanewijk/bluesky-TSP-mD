@@ -33,7 +33,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     find_index_with_tolerance,
     sample_points,
     find_wp_indices,
-    extract_arguments
+    extract_arguments,
+    plot_route
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
@@ -124,6 +125,11 @@ class DeliverConquer(Entity):
         self.added_deliveries = []
         # set called to True such that the routing begins
         self.called = True
+        # define window of customers that are being added to the route.
+        # Larger window makes bs slower, but gives more opportunities for 
+        # L&R operations
+        # Measured in number of customers
+        self.window = int(self.M) + 2
 
     def spawn_truck(self, truckname):
         """Spawn the truck at the depot location.
@@ -453,8 +459,6 @@ class DeliverConquer(Entity):
         except ValueError:
             raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
 
-        
-
         # Create second truck to perform calculations
         bs.traf.cre(self.recon_name, "Truck", bs.traf.lat[truckidx], 
                                         bs.traf.lon[truckidx],
@@ -463,7 +467,7 @@ class DeliverConquer(Entity):
                                         bs.traf.tas[truckidx])
         reconidx = bs.traf.id.index(self.recon_name)
 
-        max_cust = self.reroute(reconidx, dcustid, ncustid)
+        max_cust, uav_lat, uav_lon = self.reroute(reconidx, dcustid, ncustid)
 
         rte_recon = bs.traf.ap.route[reconidx]
 
@@ -475,11 +479,17 @@ class DeliverConquer(Entity):
 
         truckwpidx = find_index_with_tolerance(
                     self.customers[max_cust].location, rte.wplat, rte.wplon)
+        
+        # plot_route(self.G, [rte.wplat[:truckwpidx + 1]], 
+        #                     [rte.wplon[:truckwpidx + 1]],
+        #                     f'Route with serving customer {dcustid} by truck',
+        #                     ['Truck'])
+        # plot_route(self.G, [rte_recon.wplat[:reconwpidx + 1], uav_lat], 
+        #                     [rte_recon.wplon[:reconwpidx + 1], uav_lon],
+        #                     f'Route with serving customer {dcustid} by drone',
+        #                     ['Truck', 'Drone'])
 
         # Calculate the eta to next customer for both cases
-        # eta_regular = calc_truck_ETA(truckidx, truckwpidx)
-        # eta_modified = calc_truck_ETA(reconidx, reconwpidx)
-
         eta_r = calc_truck_ETA2(self.trucketa[:truckwpidx + 1], 
                                 rte.operation_duration[:truckwpidx + 1])
         eta_m = calc_truck_ETA2(self.reconeta[:reconwpidx + 1], 
@@ -504,7 +514,11 @@ class DeliverConquer(Entity):
         # Stop the simulation, we need to determine next drone's launch point
         # stack.stack('HOLD')
         # Reroute the 'real' truck
-        self.reroute(truckidx, dcustid, ncustid)
+        max_cust, uav_lat, uav_lon = self.reroute(truckidx, dcustid, ncustid)
+        # plot_route(self.G, [rte.wplat[:truckwpidx + 1], uav_lat], 
+        #                     [rte.wplon[:truckwpidx + 1], uav_lon],
+        #                     f'Route with serving customer {dcustid} by drone non recon',
+        #                     ['Truck', 'Drone'])
 
     def reroute(self, truckidx, dcustid, ncustid):
         """Reroutes the truck when the next customer can be served by drone
@@ -534,14 +548,15 @@ class DeliverConquer(Entity):
         bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
         if recon:
             self.reconeta.extend(etas)
-            self.add_routepiece(self.recon_name)
+            self.add_recon_routepiece()
         else:
             self.remove_commands(dcustid, ncustid)
             self.trucketa.extend(etas)
             self.add_routepiece()
 
-        max_cust_considered = self.deploy(truckidx, dcustid)
-        return max_cust_considered
+        max_cust_considered, uav_lat, uav_lon = self.deploy(truckidx, dcustid)
+
+        return max_cust_considered, uav_lat, uav_lon
 
     def deploy(self, truckidx, dcustid):
         """
@@ -611,11 +626,17 @@ class DeliverConquer(Entity):
             self.cruise_alt / ft, self.cruise_spd / kts,
             self.delivery_time, self.rendezvous_time)
 
+        uav_lat = [rte.wplat[mp.launch_location], 
+                self.customers[dcustid].location[0], 
+                rte.wplat[mp.pickup_location]]
+        uav_lon = [rte.wplon[mp.launch_location], 
+                self.customers[dcustid].location[1], 
+                rte.wplon[mp.pickup_location]]
         # Continue the simulation
         if not recon:
             self.resume()
         
-        return cust_max
+        return cust_max, uav_lat, uav_lon
     
     @timed_function(dt = bs.sim.simdt * 10)
     def add_routepiece(self, recon=None):
@@ -631,19 +652,14 @@ class DeliverConquer(Entity):
 
         if not self.called:
             return
-        # check what truck should be routed, the real or reconaissance
-        truckname = self.truckname if recon is None else recon
+
         try:
-            truckidx = bs.traf.id.index(truckname)
+            truckidx = bs.traf.id.index(self.truckname)
         except ValueError:
             return
-        # define window of customers that are being added to the route.
-        # Larger window makes bs slower, but gives more opportunities for 
-        # L&R operations
-        window = int(self.M) + 2
 
-        for u,v in zip(self.current_route[:window], 
-            self.current_route[1:1 + window]):
+        for u,v in zip(self.current_route[:self.window], 
+            self.current_route[1:1 + self.window]):
             if (u, v) in self.added_route and recon is None:
                 # If the route already has been added, skip the routepiece
                 continue
@@ -651,16 +667,13 @@ class DeliverConquer(Entity):
             # Fetch argument from the string
             args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
                                     f'ADDTDWAYPOINTS {self.truckname},')
-            if recon is None:
-                self.trucketa.extend(self.routing_etas[f'{u}-{v}'])
-            else:
-                self.reconeta.extend(self.routing_etas[f'{u}-{v}'])
+            self.trucketa.extend(self.routing_etas[f'{u}-{v}'])
             # Parse the command directly, this way it is added without a 
             # bs timetick
             bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
-            if recon is None:
-                # Store the route such that it will not be added again
-                self.added_route.append((u, v))
+
+            # Store the route such that it will not be added again
+            self.added_route.append((u, v))
 
         for delivery_cmd in self.delivery_cmds:
             if delivery_cmd in self.added_deliveries and recon is None:
@@ -669,21 +682,51 @@ class DeliverConquer(Entity):
             # Else continue and add the delivery
             # ...But first check whether the wp of that delivery has been
             # given to the truck already (should be in the window)
-            if int(delivery_cmd) in self.current_route[:1 + window]:
+            if int(delivery_cmd) in self.current_route[:1 + self.window]:
                 # Fetch arguments from the string
                 args = extract_arguments(self.delivery_cmds[delivery_cmd],
                                     f'ADDOPERATIONPOINTS {self.truckname},')
                 # Parse the command directly, this way it is added without a 
                 # bs timetick
                 bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
-                if recon is None:
-                    # Store the delivery such that it will not be added again
-                    self.added_deliveries.append(delivery_cmd)
+
+                # Store the delivery such that it will not be added again
+                self.added_deliveries.append(delivery_cmd)
+
+    def add_recon_routepiece(self):
+        try:
+            truckidx = bs.traf.id.index(self.recon_name)
+        except ValueError:
+            return
     
+        for u,v in zip(self.current_route[1:1+self.window], 
+            self.current_route[2:2 + self.window]):
+            # Add all routepieces in window, except for dronecust
+            # The drone customer is the first one in line
+            # Fetch argument from the string
+            args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
+                                    f'ADDTDWAYPOINTS {self.truckname},')
+
+            self.reconeta.extend(self.routing_etas[f'{u}-{v}'])
+            # Parse the command directly, this way it is added without a 
+            # bs timetick
+            bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *args)
+
+
+        for delivery_cmd in self.delivery_cmds:
+            # Add delivery commands in window
+            if int(delivery_cmd) in self.current_route[1:2 + self.window]:
+                # Fetch arguments from the string
+                args = extract_arguments(self.delivery_cmds[delivery_cmd],
+                                    f'ADDOPERATIONPOINTS {self.truckname},')
+                # Parse the command directly, this way it is added without a 
+                # bs timetick
+                bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
+
+
     def resume(self):
         """Method to resume the simulation"""
         if self.truckname not in bs.traf.Operations.operational_states:
             stack.stack(f'VNAV {self.truckname} ON')
             stack.stack(f'LNAV {self.truckname} ON')
-        # stack.stack("OP")
         stack.stack("FF")

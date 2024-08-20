@@ -82,9 +82,6 @@ class TDRoute(Route):
             wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
 
         wpid = acrte.wpname.index(wpname)
-        if acrte.wpflyby[wpid]:
-            bs.scr.echo('TURNSPD waypoint required for operation waypoints. \
-                        Turnspeed for waypoint(s) marked as delivery automatically adjusted to default value.')
         # this line for some reason stop the drone from spawning
         # Modify TURNSPD to 5 for all delivery waypoints
         acrte.wpturnspd[wpid] = 2.0
