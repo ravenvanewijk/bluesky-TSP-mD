@@ -34,11 +34,15 @@ class DroneManager(Entity):
         - spd: str, speed of the UAV
         - service_t: str, delivery time required for UAV
         - recovery_t: str, rendezvous time required for UAV"""
+
         available_name = self.get_available_name(UAVnumber)
-        self.active_drones[available_name] = {'status': False, 'truck': truck, 'type': type, 'lat_i': lat_i, 
-                                            'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
-                                            'lon_k': lon_k, 'wpname_k': wpname_k, 'alt': alt, 'spd': spd,
-                                            'service_time': service_t, 'recovery_time': recovery_t, 'del_done': False}
+        self.active_drones[available_name] = {
+            'status': False, 'truck': truck, 'type': type, 'lat_i': lat_i, 
+            'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
+            'lon_k': lon_k, 'wpname_k': wpname_k, 'alt': alt, 'spd': spd,
+            'service_time': service_t, 'recovery_time': recovery_t,
+            'del_done': False
+            }
         return available_name
 
     def get_available_name(self, UAVnumber):
@@ -47,9 +51,23 @@ class DroneManager(Entity):
         args: type, description
         - UAVnumber: str, physical UAV number
         """
-        nr = sum(1 for key in self.active_drones.keys() if key.startswith(f'UAV{UAVnumber}')) +\
-                sum(1 for key in self.completed_ops.keys() if key.startswith(f'UAV{UAVnumber}'))
-        return f'UAV{UAVnumber}_{nr + 1}'
+        # Collect all the existing drone names for the given UAVnumber
+        existing_names = [
+            key.split('_')[1] for key in self.active_drones.keys() if key.startswith(f'UAV{UAVnumber}_')
+        ] + [
+            key.split('_')[1] for key in self.completed_ops.keys() if key.startswith(f'UAV{UAVnumber}_')
+        ]
+        
+        # Convert the names to integers to find the available number
+        used_numbers = sorted(int(num) for num in existing_names)
+        
+        # Find the smallest available number by checking for gaps in the used numbers
+        for i in range(1, len(used_numbers) + 1):
+            if i not in used_numbers:
+                return f'UAV{UAVnumber}_{i}'
+        
+        # If no gaps were found, return the next consecutive number
+        return f'UAV{UAVnumber}_{len(used_numbers) + 1}'
 
     def spawn_drone(self, drone_name):
         """Spawn (create) a drone with drone name.

@@ -103,7 +103,7 @@ class LR_PuLP:
             self.pickup_location = [k for k in self.P if pulp.value(self.y[k]) > 0.5][0]
 
             # Calculate waiting time and traveling time
-            waiting_time = pulp.value(self.w[self.launch_location][self.pickup_location])
+            self.waiting_time = pulp.value(self.w[self.launch_location][self.pickup_location])
             d_traveling_time = (self.t_ij[self.launch_location] + self.t_jk[self.pickup_location]) * pulp.value(self.z[self.launch_location][self.pickup_location])
             t_traveling_time = self.T_k[self.pickup_location] - self.T_i[self.launch_location]
 
@@ -116,7 +116,7 @@ class LR_PuLP:
 
             print(f"Optimal launch location: {self.launch_location}")
             print(f"Optimal pickup location: {self.pickup_location}")
-            print(f"Waiting time: {waiting_time}")
+            print(f"Waiting time: {self.waiting_time}")
             print(f"Drone Traveling time: {d_traveling_time}")
             print(f"Truck Travelling time: {t_traveling_time}")
             print(f"{waiting_entity} is waiting at the pickup location.")

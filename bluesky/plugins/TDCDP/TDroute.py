@@ -82,8 +82,7 @@ class TDRoute(Route):
             wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
 
         wpid = acrte.wpname.index(wpname)
-        # this line for some reason stop the drone from spawning
-        # Modify TURNSPD to 5 for all delivery waypoints
+        # Modify TURNSPD to 2 for all delivery waypoints
         acrte.wpturnspd[wpid] = 2.0
         acrte.wpflyby[wpid] = False
         acrte.wpflyturn[wpid] = True
@@ -127,6 +126,8 @@ class TDRoute(Route):
                 acrte.children[wpid] = [child]
             else:
                 acrte.children[wpid].extend([child])
+
+            return child
         
         if wptype.upper() == 'RENDEZVOUS':
             if len(wpname.split('/')) == 2:

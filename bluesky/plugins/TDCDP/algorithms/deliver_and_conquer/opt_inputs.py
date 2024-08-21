@@ -60,9 +60,10 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
         _, dist = kwikqdrdist(rte.wplat[i], rte.wplon[i],
                                 custlat, custlon)
         
-        t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5, i)
-        # + delivery drone time
-        t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5, i) + delivery_time
+        t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5)
+        # + delivery drone time to account for delivery on way back
+        t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5) + \
+                                delivery_time
 
     T_ik = {}
     for i in wp_indeces:
@@ -167,7 +168,7 @@ def calc_truck_ETA(acidx, lastwp):
 
     return eta_time
 
-def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, i):
+def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a):
     """
     Calculates drone travel time considering acceleration.
 

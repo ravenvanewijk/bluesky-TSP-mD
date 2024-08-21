@@ -116,11 +116,17 @@ def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
     Returns:
     - np.array, array of unique waypoint indices
     """
-    # Create a dictionary for route points with their indices, rounding coordinates to avoid precision issues
-    rte_points_dict = {
-        (round(lat, decimal_places), round(lon, decimal_places)): i
-        for i, (lat, lon) in enumerate(zip(rte.wplat[:max_wp], rte.wplon[:max_wp]))
-    }
+    # Create a dictionary that can store multiple indices for the same rounded coordinates
+    rte_points_dict = {}
+    
+    # Populate the dictionary with lists of indices for each coordinate
+    for i, (lat, lon) in enumerate(zip(rte.wplat[:max_wp + 1], 
+                                                    rte.wplon[:max_wp + 1])):
+        key = (round(lat, decimal_places), round(lon, decimal_places))
+        if key in rte_points_dict:
+            rte_points_dict[key].append(i)
+        else:
+            rte_points_dict[key] = [i]
 
     # Extract tuples from lr_locs, rounding coordinates
     lr_locs_tuples = [
@@ -128,12 +134,13 @@ def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
         for point in lr_locs
     ]
 
-    # Find matching indices in the route of the truck, filtering out None values
-    wp_indices = [rte_points_dict.get(point) for point in lr_locs_tuples]
-    wp_indices = [idx for idx in wp_indices if idx is not None]  # Remove None values
-
+    # Find matching indices, gathering all potential indices for each matching coordinate
+    wp_indices = []
+    for point in lr_locs_tuples:
+        indices = rte_points_dict.get(point, [])
+        wp_indices.extend(indices)
+    
     return np.unique(np.array(wp_indices))
-    # return np.array([0, max_wp])
 
 def extract_arguments(data_string, ext):
     # Remove the prefix
@@ -144,6 +151,9 @@ def extract_arguments(data_string, ext):
     arguments = data_string.split(',')
     
     return arguments
+
+def get_drone_id(drone):
+    return drone.split('_')[0][3:]
 
 def calculate_area(graph):
     # Extract node coordinates
