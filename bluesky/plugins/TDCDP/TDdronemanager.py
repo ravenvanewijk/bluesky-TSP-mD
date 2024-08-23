@@ -35,7 +35,7 @@ class DroneManager(Entity):
         - service_t: str, delivery time required for UAV
         - recovery_t: str, rendezvous time required for UAV"""
 
-        available_name = self.get_available_name(UAVnumber)
+        available_name = self.get_available_name(UAVnumber, truck)
         self.active_drones[available_name] = {
             'status': False, 'truck': truck, 'type': type, 'lat_i': lat_i, 
             'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
@@ -45,17 +45,30 @@ class DroneManager(Entity):
             }
         return available_name
 
-    def get_available_name(self, UAVnumber):
-        """Get available name for drone in memory. Keeps track of number of operations performed by drone with
-        drone number UAVnumber.
-        args: type, description
+    def get_available_name(self, UAVnumber, truck):
+        """Get available name for drone in memory. Keeps track of number of operations 
+        performed by drone with drone number UAVnumber for a specific truck.
+        
+        Args:
         - UAVnumber: str, physical UAV number
+        - truck: str, the name of the truck to which the UAV belongs
+
+        Naming convention:
+        --> <Truck single key identifyer>_UAV<UAV physical number>_<launch #>
+
+        e.g. T_UAV_3_1
+
+        Truck single key identifyer = 'T'
+        Physical UAV number = '3'
+        Launch number = '1' (being launched for the 1st time)
         """
-        # Collect all the existing drone names for the given UAVnumber
+        # Collect all the existing drone names for the given UAVnumber and truck
         existing_names = [
-            key.split('_')[1] for key in self.active_drones.keys() if key.startswith(f'UAV{UAVnumber}_')
+            key.split('_')[-1] for key in self.active_drones.keys() 
+            if key.startswith(f'{truck[0]}_UAV{UAVnumber}_')
         ] + [
-            key.split('_')[1] for key in self.completed_ops.keys() if key.startswith(f'UAV{UAVnumber}_')
+            key.split('_')[-1] for key in self.completed_ops.keys() 
+            if key.startswith(f'{truck[0]}_UAV{UAVnumber}_')
         ]
         
         # Convert the names to integers to find the available number
@@ -64,10 +77,11 @@ class DroneManager(Entity):
         # Find the smallest available number by checking for gaps in the used numbers
         for i in range(1, len(used_numbers) + 1):
             if i not in used_numbers:
-                return f'UAV{UAVnumber}_{i}'
+                return f'{truck[0]}_UAV{UAVnumber}_{i}'
         
         # If no gaps were found, return the next consecutive number
-        return f'UAV{UAVnumber}_{len(used_numbers) + 1}'
+        # TODO make names shorter such that BS can display them
+        return f'{truck[0]}_UAV{UAVnumber}_{len(used_numbers) + 1}'
 
     def spawn_drone(self, drone_name):
         """Spawn (create) a drone with drone name.
@@ -134,7 +148,7 @@ class DroneManager(Entity):
         - UAVnumber: str, physical UAV number"""
         for drone_id, drone_data in self.active_drones.items():
             if (drone_data['status'] == 'OTW' or drone_data['status'] == 'HOVERING') and\
-                    drone_id.split('_')[0] == UAVnumber.split('_')[0]:
+                    drone_id.split('_')[1] == UAVnumber.split('_')[1]:
                 return False
         return True
 

@@ -46,7 +46,29 @@ class TDRoute(Route):
         if acrte.iactwp < 0:
             # Direct towards first waypoint
             acrte.direct(acidx, acrte.wpname[0])
+    
+    @stack.command(aliases=("DELTDWP",))
+    @staticmethod
+    def deltdwpt(acidx: 'acid', wpname: 'wpinroute'):
+        """DELWPT acid,wpname
+        
+        Delete a td waypoint from a route (FMS). """
+        # Look up waypoint
+        acid = bs.traf.id[acidx]
+        acrte = Route._routes[acid]
+        try:
+            wpidx = acrte.wpname.index(wpname.upper())
+        except ValueError:
+            return False, "Waypoint " + wpname + " not found"
 
+        # Delete operation attributes
+        del acrte.operation_wp[wpidx]
+        del acrte.operation_duration[wpidx]
+        del acrte.children[wpidx]
+        del acrte.op_type[wpidx]
+
+        # Call regular command
+        Route.delwpt(acidx, wpname)
     
     @stack.command
     @staticmethod

@@ -1,4 +1,5 @@
 import random
+import re
 import osmnx as ox
 import networkx as nx
 import numpy as np
@@ -153,7 +154,18 @@ def extract_arguments(data_string, ext):
     return arguments
 
 def get_drone_id(drone):
-    return drone.split('_')[0][3:]
+    match = re.search(r'UAV(\d+)_', drone)
+    if match:
+        number = match.group(1)
+    return number
+
+def get_available_drone(truck_drones):
+    drone_ids = [get_drone_id(drone_name) for drone_name in truck_drones]
+    for i in range(1, len(truck_drones) + 2):
+        if str(i) not in drone_ids:
+            return str(i)
+    
+    raise ValueError("No available drone found")
 
 def calculate_area(graph):
     # Extract node coordinates
@@ -185,17 +197,25 @@ def calculate_area(graph):
 
     return area_sqm
 
-def plot_route(G, lats, lons, title=None, labels=None):
+def plot_route(G, lats, lons, title=None, labels=None, point_lat=None, 
+                                            point_lon=None, point_label=None):
     fig, ax = ox.plot_graph(G, show=False, close=False)
+    # Check the validity of lats and lons
     if not len(lats) == len(lons) or len(lats) > len(mcolors.BASE_COLORS):
         return
+    
+    # Plot the routes
     colors = list(mcolors.BASE_COLORS.values()) 
     for i in np.arange(len(lats)):
         try:
-            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i], 
-                                                    label=labels[i])
+            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i], label=labels[i])
         except:
             ax.plot(lons[i], lats[i], linewidth=2, color=colors[i])
+    
+    # Plot the single point if provided
+    if point_lat is not None and point_lon is not None:
+        ax.plot(point_lon, point_lat, 'ro', markersize=8, label=point_label or 'Point')
+    
     plt.legend()
     plt.title(title)
     plt.show()

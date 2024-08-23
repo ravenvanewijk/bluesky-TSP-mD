@@ -1,4 +1,3 @@
-import gurobipy as gp
 import pulp
 
 class LR_PuLP:

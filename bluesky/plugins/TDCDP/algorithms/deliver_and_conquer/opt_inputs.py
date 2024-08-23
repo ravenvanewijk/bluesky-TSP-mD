@@ -168,7 +168,7 @@ def calc_truck_ETA(acidx, lastwp):
 
     return eta_time
 
-def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a):
+def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0):
     """
     Calculates drone travel time considering acceleration.
 
@@ -179,13 +179,72 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a):
     - vspd_down: float, vertical descent speed in m/s
     - alt: float, cruise altitude in meters
     - a: float, horizontal acceleration in m/s^2
-    - a: float, vertical ascent acceleration in m/s^2
-    - a: float, vertical descent acceleration in m/s^2
     """
 
-    # Horizontal travel
+    a_h = a
+    a_v = a * 2 / 3.5
+
+    v_time_down = calc_vertical_time(vspd_down, alt, a_v, abs(vspd0))
+    h_time = calc_cruise_time(hspd, dist, a_h, hspd0)
+
+    if vspd0 < 0:
+        # We are in descend phase already
+        return v_time_down
+    
+    elif hspd0 > 0:
+        # We are in cruise phase
+        total_time = v_time_down + h_time
+        return total_time
+
+    # If we dont hit these blocks, we're just in ascend or we need to calculate
+    # the entire mission time. Doesn't matter, same logic
+    v_time_up = calc_vertical_time(vspd_up, alt, a_v, vspd0)
+
+    total_time = h_time + v_time_up + v_time_down                                    
+
+    return total_time
+
+
+def calc_vertical_time(vspd, alt, a, vspd0=0):
+    """
+    Calculates drone ascend or descend travel time considering acceleration.
+
+    Params:
+    - vspd: float, vertical (absolute) speed in m/s
+    - alt: float, cruise altitude in meters
+    - a: float, vertical acceleration in m/s^2
+    """
+    if vspd0 > vspd:
+        print('Something might be going wrong. Higher vspd than expected')
+        vspd0 = vspd
+
+    a_time = (vspd - vspd0) / a
+    a_dist = 0.5 * a * a_time**2
+    if a_dist * 2 > alt:
+        a_time = (alt / 2 / a)**0.5
+        v_time = 2 * a_time
+    else:
+        v_cruise_dist = alt - 2 * a_dist
+        v_cruise_time = v_cruise_dist / vspd
+        v_time = 2 * a_time + v_cruise_time
+    
+    return v_time
+
+def calc_cruise_time(hspd, dist, a, hspd0=0):
+    """
+    Calculates drone travel cruise time considering acceleration.
+
+    Params:
+    - dist: float, distance in nautical miles
+    - hspd: float, horizontal speed in m/s
+    - a: float, horizontal acceleration in m/s^2
+    """
+    if hspd0 > hspd:
+        print('Something might be going wrong. Higher vspd than expected')
+        hspd0 = hspd
+
     h_dist = dist * nm
-    a_time = hspd / a
+    a_time = (hspd - hspd0) / a
     a_dist = 0.5 * a * a_time**2
     if a_dist * 2 > h_dist:
         a_time = (h_dist / 2 / a)**0.5
@@ -194,34 +253,8 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a):
         h_cruise_dist = h_dist - 2 * a_dist
         h_cruise_time = h_cruise_dist / hspd
         h_time = 2 * a_time + h_cruise_time
-
-    a = a * 2 / 3.5
-    # Vertical ascent
-    v_acc_time_up = vspd_up / a
-    v_acc_dist_up = 0.5 * a * v_acc_time_up**2
-    if v_acc_dist_up * 2 > alt:
-        v_acc_time_up = (alt / 2 / a)**0.5
-        v_time_up = 2 * v_acc_time_up
-    else:
-        v_cruise_dist_up = alt - 2 * v_acc_dist_up
-        v_cruise_time_up = v_cruise_dist_up / vspd_up
-        v_time_up = 2 * v_acc_time_up + v_cruise_time_up
-
-    # Vertical descent
-    v_acc_time_down = vspd_down / a
-    v_acc_dist_down = 0.5 * a * v_acc_time_down**2
-    if v_acc_dist_down * 2 > alt:
-        v_acc_time_down = (alt / 2 / a)**0.5
-        v_time_down = 2 * v_acc_time_down
-    else:
-        v_cruise_dist_down = alt - 2 * v_acc_dist_down
-        v_cruise_time_down = v_cruise_dist_down / vspd_down
-        v_time_down = 2 * v_acc_time_down + v_cruise_time_down
-
-    total_time = h_time + v_time_up + v_time_down                                    
-
-    return total_time
-
+    
+    return h_time
 
 def calc_truck_ETA2(eta, op_duration):
     # Add operational times
