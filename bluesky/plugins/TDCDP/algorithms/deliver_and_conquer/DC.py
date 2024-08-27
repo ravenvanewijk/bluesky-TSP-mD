@@ -68,6 +68,7 @@ def init_plugin():
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
+        self.seed = 11 # None for random seed, enter a number to add a seed
 
     def reset_added_cmds(self):
         self.added_route = []
@@ -97,7 +98,7 @@ class DeliverConquer(Entity):
         self.load_custs(args)
         self.spawn_truck('TRUCK')
 
-        #_____________PARAMS_____________
+        #_____________PHYSICAL_PARAMS_____________
         self.M = M
         self.delivery_time = 60
         self.sortie_time = 60
@@ -128,8 +129,6 @@ class DeliverConquer(Entity):
         self.current_route = self.model.P[0].tour[:]
         self.added_route = []
         self.added_deliveries = []
-        # set called to True such that the routing begins
-        self.called = True
         # define window of customers that are being added to the route.
         # Larger window makes bs slower, but gives more opportunities for 
         # L&R operations
@@ -140,6 +139,9 @@ class DeliverConquer(Entity):
         self.alpha = 15
         self.beta = 10
         self.bigM = 10000
+
+        # set called to True such that the routing begins
+        self.called = True
 
     def spawn_truck(self, truckname):
         """Spawn the truck at the depot location.
@@ -211,8 +213,8 @@ class DeliverConquer(Entity):
             n = int(calculate_area(self.G) * sites_per_m)
             n -= len(self.customers)
             self.lr_locs = pd.concat(
-                            [sample_points(self.G, n), self.lr_locs],
-                            ignore_index=True
+                            [sample_points(self.G, n, self.seed), 
+                            self.lr_locs], ignore_index=True
                                         )
         
         # self.plot_graph(True)
@@ -241,7 +243,7 @@ class DeliverConquer(Entity):
             else:
                 raise Exception(f"Warning: Index out of bounds (i={i}, j={j})")
 
-        self.model = PACO(1, 10, 0.3, 3, 10, 200, eta, 5)
+        self.model = PACO(1, 10, 0.3, 3, 10, 200, eta, 5, self.seed)
         self.model.simulate()
         # Temporary hardcoding so get get the same tour every time
         self.model.P[0].tour = [0, 12, 19, 1, 11, 4, 6, 3, 21, 22, 13, 23, 17, 16, 20, 9, 2, 10, 25, 5, 8, 7, 15, 18, 14, 24, 0]
@@ -400,7 +402,6 @@ class DeliverConquer(Entity):
         try:
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, 
                                                                         wplons)
-            # print(f'Arriving at customer with id {custidx} in {calc_eta(truckidx, nextcustwpidx)} seconds')
         except ValueError:
             raise ValueError(f"Customer {dcustid} with coordinates {dcust_latlon} not found in route")
         try:
@@ -470,8 +471,8 @@ class DeliverConquer(Entity):
 
         # Reroute the 'real' truck
         # This is phase 3 starting here below...
-        max_cust, uav_lat, uav_lon, child = self.reroute_truck(truckidx, dcustid, 
-                                                                    ncustid)
+        max_cust, uav_lat, uav_lon, child = self.reroute_truck(truckidx, 
+                                                            dcustid, ncustid)
         self.reschedule_existing_drones(truckidx, rte, dcustid, child)
 
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1], uav_lat], 
@@ -513,21 +514,30 @@ class DeliverConquer(Entity):
                             self.customers[ncustid].location)
 
         road_route_merged = linemerge(road_route)
-        
         wp_commands = construct_scenario(self.truckname, road_route_merged, 
                                                                     spd_lims)
-        print(road_route_merged.xy)                       
+
         # self.plot_graph(road_route, True)
         newcmds = extract_arguments(wp_commands, 
                                     f'ADDTDWAYPOINTS {self.truckname},')
-
-        bs.traf.ap.route[truckidx].addtdwaypoints(truckidx, *newcmds)
+        try:
+            rte = bs.traf.ap.route[truckidx]
+            last_lat = rte.wplat[-1]
+            last_lon = rte.wplon[-1]
+            if last_lat == float(newcmds[0]) and last_lon == float(newcmds[1]):
+                # skip the first wp if we already added that one
+                startidx = 6
+            else:
+                startidx = 0
+        except IndexError:
+            startidx = 0
+        bs.traf.ap.route[truckidx].addtdwaypoints(truckidx,*newcmds[startidx:])
         if recon:
-            self.reconeta.extend(etas)
+            self.reconeta.extend(etas[startidx//6:])
             self.add_recon_routepiece()
         else:
             self.remove_commands(dcustid, ncustid)
-            self.trucketa.extend(etas)
+            self.trucketa.extend(etas[startidx//6:])
             self.add_routepiece()
 
         max_cust_considered, uav_lat, uav_lon, child = self.deploy_new_drone(
@@ -572,7 +582,14 @@ class DeliverConquer(Entity):
                             else 'k'
             B = (op_drones[drone][f'lat_{op_loc}'], 
                         op_drones[drone][f'lon_{op_loc}'])
-
+            if A == B:
+                if op_loc == 'k':
+                    # SPECIAL CASE: we're rerouting to a drone that is already
+                    # preparing to be picked up.
+                    bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
+                        f"{A[0]}/{A[1]}", 'RENDEZVOUS', self.rendezvous_time,
+                                                                    drone)
+                continue
             road_route, spd_lims, etas = roadroute(self.G, A, B)
 
             road_route_merged = linemerge(road_route)
@@ -756,10 +773,16 @@ class DeliverConquer(Entity):
             truckidx = bs.traf.id.index(self.recon_name)
         except ValueError:
             return
-    
-        for u,v in zip(self.current_route[1:1+self.window], 
-            self.current_route[2:2 + self.window]):
+
+        if len(self.current_route) <= 2:
+            # correction for dronecust not needed for last piece
+            cor = 0
+        else:
             # Add all routepieces in window, except for dronecust
+            cor = 1
+            
+        for u,v in zip(self.current_route[cor:cor+self.window], 
+            self.current_route[1+cor:1 + cor + self.window]):
             # The drone customer is the first one in line
             # Fetch argument from the string
             args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
@@ -810,7 +833,8 @@ class DeliverConquer(Entity):
             wpname_k = rte.wpname[wpid_k]
 
             if not recon:
-                print(f"Changed pickup point of {drone} to {wpname_k}")
+                print(f"Changed pickup point of {drone} to {wpname_k} " +
+                        f"during spawning drone {child}")
                 # Modify parameters of drone manager first
                 bs.traf.Operations.drone_manager.active_drones[drone]\
                                             ['lat_k'] = lat_k
@@ -829,37 +853,31 @@ class DeliverConquer(Entity):
                 bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
                     wpname_k, 'RENDEZVOUS', self.rendezvous_time, drone)
 
-                # Check whether these coords are the same as for the old drone 
-                # pickup location. If so, we dont need to change its wp
-                # If not,
-                new_wp = False if \
-                    lat_k == bs.traf.Operations.drone_manager.active_drones\
-                                    [drone]['lat_k'] and \
-                    lon_k == bs.traf.Operations.drone_manager.active_drones\
-                                    [drone]['lon_k'] else True
-                if new_wp:
-                    # Only if the drone is in air we want to modify the last wp
-                    # If it is not spawned yet the routing commands are not 
-                    # given yet so we can omit these
-                    # steps:
-                    # 1. Remove last wp (wp_k)
-                    # 2. add new wpk
-                    # 3. re-add operation point point
-                    droneidx = bs.traf.id.index(drone)
-                    dronerte = bs.traf.ap.route[droneidx]
-                    wp_to_del = get_wpname(
-                        f"{truck_drones[drone]['lat_k']}" +
-                        f"/{truck_drones[drone]['lon_k']}",
-                        dronerte)
-                    # Delete old wp k
-                    bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
-                    # Add new wp k
-                    bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
-                                    lat_k, lon_k, self.cruise_alt, 
-                                    self.cruise_spd, 'TURNSPD', 3)
-                    # Add the rendezvous to new k 
-                    bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
-                        f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
+                # Only if the drone is in air we want to modify the last wp
+                # If it is not spawned yet the routing commands are not 
+                # given yet so we can omit these. But in this case we do have 
+                # to modify it manually
+                # steps:
+                # 1. Remove last wp (wp_k)
+                # 2. add new wpk
+                # 3. re-add operation point point
+                droneidx = bs.traf.id.index(drone)
+                dronerte = bs.traf.ap.route[droneidx]
+                wp_to_del = get_wpname(
+                    f"{truck_drones[drone]['lat_k']}" +
+                    f"/{truck_drones[drone]['lon_k']}",
+                    dronerte)
+                cur_wp = dronerte.iactwp
+                # Delete old wp k
+                bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
+                # Add new wp k
+                bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
+                                lat_k, lon_k, self.cruise_alt, 
+                                self.cruise_spd, 'TURNSPD', 3)
+                # Add the rendezvous to new k 
+                bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
+                    f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
+                dronerte.direct(droneidx, dronerte.wpname[cur_wp])
             else:
                 # Here we want to re-add the sortie, because we know i is 
                 # in the route (we design for that)
@@ -939,8 +957,8 @@ class DeliverConquer(Entity):
                         ['lon_i']) if not active_drones[drone]['status'] \
                     else (bs.traf.lat[bs.traf.id.index(drone)], 
                             bs.traf.lon[bs.traf.id.index(drone)])
-            #TODO later: streamline this because we dont have to recalculate the ij 
-            # a ton of times. only once is good in most cases
+            #TODO later: streamline this because we dont have to recalculate 
+            # the ij a ton of times. only once is good in most cases
             if active_drones[drone]['del_done'] and active_drones[drone]\
                                                             ['status']!= False:
                 droneidx = bs.traf.id.index(drone) 
@@ -950,8 +968,8 @@ class DeliverConquer(Entity):
                 _, dist_jk = kwikqdrdist(loc_A[0], loc_A[1],
                     rte.wplat[wp],
                     rte.wplon[wp])
-                drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, self.vspd_up, 
-                        self.vspd_down, self.cruise_alt, 3.5,
+                drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
+                        self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
                         bs.traf.tas[droneidx], bs.traf.vs[droneidx])
 
             else:
@@ -1000,8 +1018,10 @@ class DeliverConquer(Entity):
             obj = self.bigM * waiting_time_truck + drone_t + \
                                                     waiting_time_drone
             if obj < best_obj:
-                best_wp, best_truck_waiting_time = wp, waiting_time_truck
+                best_wp, best_truck_waiting_time, best_obj = \
+                                wp, waiting_time_truck, obj
                 w = (waiting_time_truck, drone_t)
+                
         
         old_wait = active_drones[drone]['w_t']
 
@@ -1015,4 +1035,4 @@ class DeliverConquer(Entity):
             stack.stack(f'LNAV {self.truckname} ON')
         # uncomment for fast sim
         # debug --> slower so no ff
-        stack.stack("FF")
+        # stack.stack("FF")

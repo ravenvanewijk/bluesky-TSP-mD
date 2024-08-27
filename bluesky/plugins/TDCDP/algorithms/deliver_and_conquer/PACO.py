@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 class PACO:
     """Class to represent a Population based Ant Colony optimization model"""
-    def __init__(self, alpha, beta, q0, k, m, gens, eta, tau_mul):
+    def __init__(self, alpha, beta, q0, k, m, gens, eta, tau_mul, seed=None):
         """Initialisation of Population based Ant Colony Optimization model
         Implemented from Applying Population Based ACO to Dynamic Optimization Problems 
         https://doi.org/10.1007/3-540-45724-0_10 
@@ -41,6 +41,7 @@ class PACO:
         self.P              = []
         self.Delta          = (self.tau_max - self.tau_init) / self.k
         self.tour_lengths   = []  # To store tour lengths at each generation
+        self.rng            = np.random.default_rng(seed) # 
 
     def reset(self):
         """Resets the population and tour lengths for a new simulation."""
@@ -51,7 +52,7 @@ class PACO:
         """Simulates a generation of the PACO algorithm."""
         samples = []
         for _ in range(self.m):
-            samples.append(Ant(self.n))
+            samples.append(Ant(self.n, self.rng))
         
         for ant in samples:
             while not len(ant.tour) == ant.tour_len + 1:
@@ -129,17 +130,19 @@ class PACO:
 
 class Ant:
     """Class to represent an ant within an ant colonization optimization model"""
-    def __init__(self, tour_len):
+    def __init__(self, tour_len, rng):
         """Initializes an Ant with a specified tour length.
         
         Params: type, description:
             - tour_len: int, length of the tour (number of cities)
+            - rng: numpy random number generator, seeded rng
         """
         self.tour       = [0]
         self.tour_len   = tour_len
         self.pos        = 0
         self.p          = None
         self.tau_x_eta  = None
+        self.rng        = rng
 
     def update_p(self, tau_i, eta_i, alpha, beta):
         """Updates the probability density function for the ant's next move.
@@ -173,12 +176,12 @@ class Ant:
         if len(self.tour) == self.tour_len:
             pick = 0  # Return to the starting node
         # Make decision based on q0 --> closest city / pheromone 
-        elif random.uniform(0, 1) <= q0:
+        elif self.rng.uniform(0, 1) <= q0:
             pick = np.argmax(self.tau_x_eta)
         # Otherwise p decision rule
         else: 
             # choose according to pheromones and heuristic distances
-            pick = np.random.choice(range(len(self.p)), p=self.p)
+            pick = self.rng.choice(range(len(self.p)), p=self.p)
 
         self.add_decision(int(pick))
 

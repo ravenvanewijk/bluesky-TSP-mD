@@ -147,9 +147,21 @@ class Operations(Entity):
             self.operational_states[acid]['ready2op'] = True
             self.operational_states[acid]['t_a'] = bs.sim.simt
 
+            # Convert to numpy arrays for easy modification
+            wplat_array = np.array(acrte.wplat)
+            wplon_array = np.array(acrte.wplon)
+
+            # Find the matching indices using boolean indexing
+            matching_mask = (wplat_array == acrte.wplat[iactwp]) & (wplon_array 
+                                                        == acrte.wplon[iactwp])
             # Update location of wp such that accuracy==100% at wp
-            acrte.wplat[iactwp], acrte.wplon[iactwp] = \
-                bs.traf.lat[acidx], bs.traf.lon[acidx]
+            # Do this for all matching indices
+            wplat_array[matching_mask] = bs.traf.lat[acidx]
+            wplon_array[matching_mask] = bs.traf.lon[acidx]
+
+            # convert back to lists
+            acrte.wplat = wplat_array.tolist()
+            acrte.wplon = wplon_array.tolist()
 
         # check whether vehicle is stationary and thus ready to perform operation
         # If the vehicle is not stationary, the operation cannot be performed

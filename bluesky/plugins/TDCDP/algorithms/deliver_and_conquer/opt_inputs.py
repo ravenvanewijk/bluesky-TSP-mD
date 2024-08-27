@@ -187,12 +187,12 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0):
     v_time_down = calc_vertical_time(vspd_down, alt, a_v, abs(vspd0))
     h_time = calc_cruise_time(hspd, dist, a_h, hspd0)
 
-    if vspd0 < 0:
-        # We are in descend phase already
-        return v_time_down
+    # if vspd0 < 0:
+    #     # We are in descend phase already
+    #     return v_time_down
     
-    elif hspd0 > 0:
-        # We are in cruise phase
+    if hspd0 > 0:
+        # We are in cruise phase, so neglect the ascend time required
         total_time = v_time_down + h_time
         return total_time
 

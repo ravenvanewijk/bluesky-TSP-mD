@@ -21,7 +21,7 @@ def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-6):
             return idx
     raise ValueError(f"Coordinates {latlon} not found in route within tolerance.")
 
-def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
+def sample_points(G: nx.MultiGraph, n: int, seed: int = None) -> gpd.GeoSeries:
     """
     ADAPTED FROM https://github.com/gboeing/osmnx/blob/main/osmnx/utils_geo.py
     This function returns points that are on the geometry instead of an
@@ -55,6 +55,9 @@ def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
     gdf_edges = graph_to_gdfs(G, nodes=False)[["geometry", "length"]]
     weights = gdf_edges["length"] / gdf_edges["length"].sum()
 
+    # Initialize random number generator with seed (if provided)
+    rng = np.random.default_rng(seed)
+
     # Initialize storage
     sample = []
     selected_points = set()
@@ -62,9 +65,10 @@ def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
     i = 0
     max_i = 3
     while N != 0 and not i > max_i:
-        idx = np.random.default_rng().choice(gdf_edges.index, size=n, p=weights)
+        idx = rng.choice(gdf_edges.index, size=n, p=weights)
         lines = gdf_edges.loc[idx, "geometry"]
-        sample, N = select_points_from_lines(lines, sample, selected_points, N)
+        sample, N = select_points_from_lines(lines, sample, selected_points, N,
+                                                                        rng)
         i += 1
         if i > max_i:
             print(f"There was an issue with selecting {n} points."
@@ -72,30 +76,41 @@ def sample_points(G: nx.MultiGraph, n: int) -> gpd.GeoSeries:
 
     return pd.Series(sample)
 
-def select_points_from_lines(geo_series, stored_points, selected_points, N):
+def select_points_from_lines(geo_series, stored_points, selected_points, N, 
+                                                                        rng):
     """
-    Select points from a GeoSeries of linestrings while avoiding duplicates and considering weights.
+    Select points from a GeoSeries of linestrings while avoiding duplicates and 
+    considering weights.
 
     Parameters
     ----------
     geo_series : gpd.GeoSeries
         GeoSeries containing linestrings.
-    num_samples : int
-        Number of points to sample.
+    stored_points : list
+        List of already selected points.
+    selected_points : set
+        Set of selected points to avoid duplicates.
+    N : int
+        Number of points left to sample.
+    rng : np.random.Generator
+        Random number generator instance from numpy to ensure reproducibility.
 
     Returns
     -------
-    pd.DataFrame
-        DataFrame with selected points and their associated lines.
+    list, int
+        Updated stored_points and remaining N.
     """
     for line in geo_series:
         points = list(line.coords)  # Extract points from the LineString
         
+        # Filter out already selected points
         available_points = [p for p in points if p not in selected_points]
         
         if available_points:
-            chosen_point = random.choice(available_points)
-            selected_points.add(chosen_point)
+            # Use the NumPy RNG to choose a point deterministically based on 
+            # the seed
+            chosen_point = rng.choice(available_points)
+            selected_points.add(tuple(chosen_point))
             stored_points.append(Point(chosen_point))
             N -= 1
 
@@ -112,12 +127,14 @@ def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
     - rte: object, route object containing waypoint data
     - lr_locs: list of Point, selected points on the route
     - max_wp: int, maximum number of waypoints to consider
-    - decimal_places: int, number of decimal places to round coordinates for comparison
+    - decimal_places: int, number of decimal places to round coordinates for 
+        comparison
 
     Returns:
     - np.array, array of unique waypoint indices
     """
-    # Create a dictionary that can store multiple indices for the same rounded coordinates
+    # Create a dictionary that can store multiple indices for the same rounded 
+    # coordinates
     rte_points_dict = {}
     
     # Populate the dictionary with lists of indices for each coordinate
@@ -135,7 +152,8 @@ def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
         for point in lr_locs
     ]
 
-    # Find matching indices, gathering all potential indices for each matching coordinate
+    # Find matching indices, gathering all potential indices for each matching 
+    # coordinate
     wp_indices = []
     for point in lr_locs_tuples:
         indices = rte_points_dict.get(point, [])
@@ -208,13 +226,15 @@ def plot_route(G, lats, lons, title=None, labels=None, point_lat=None,
     colors = list(mcolors.BASE_COLORS.values()) 
     for i in np.arange(len(lats)):
         try:
-            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i], label=labels[i])
+            ax.plot(lons[i], lats[i], linewidth=2, color=colors[i], 
+                                                            label=labels[i])
         except:
             ax.plot(lons[i], lats[i], linewidth=2, color=colors[i])
     
     # Plot the single point if provided
     if point_lat is not None and point_lon is not None:
-        ax.plot(point_lon, point_lat, 'ro', markersize=8, label=point_label or 'Point')
+        ax.plot(point_lon, point_lat, 'ro', markersize=8, label=point_label or 
+                                                                    'Point')
     
     plt.legend()
     plt.title(title)
