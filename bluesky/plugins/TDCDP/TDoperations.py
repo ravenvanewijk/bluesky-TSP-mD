@@ -218,7 +218,7 @@ class Operations(Entity):
                         if start_timer_check:
                             self.start_timer(acid, idx)
                         elif op_timer_check:
-                                self.perform_rendezvous(acid, idx)
+                            self.perform_rendezvous(acid, idx)
                         else:
                             continue
 

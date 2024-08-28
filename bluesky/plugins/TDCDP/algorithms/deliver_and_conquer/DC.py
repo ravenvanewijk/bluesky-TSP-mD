@@ -245,8 +245,6 @@ class DeliverConquer(Entity):
 
         self.model = PACO(1, 10, 0.3, 3, 10, 200, eta, 5, self.seed)
         self.model.simulate()
-        # Temporary hardcoding so get get the same tour every time
-        self.model.P[0].tour = [0, 12, 19, 1, 11, 4, 6, 3, 21, 22, 13, 23, 17, 16, 20, 9, 2, 10, 25, 5, 8, 7, 15, 18, 14, 24, 0]
 
     def route_basic_tsp(self):
         """
@@ -403,12 +401,14 @@ class DeliverConquer(Entity):
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
-            raise ValueError(f"Customer {dcustid} with coordinates {dcust_latlon} not found in route")
+            raise ValueError(f"Customer {dcustid} with coordinates " + \
+                            f"{dcust_latlon} not found in route")
         try:
             nextcustwpidx = find_index_with_tolerance(ncust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
-            raise ValueError(f"Customer {ncustid} with coordinates {ncust_latlon} not found in route")
+            raise ValueError(f"Customer {ncustid} with coordinates " + \
+                            f"{ncust_latlon} not found in route")
 
         # Create second truck to perform calculations
         bs.traf.cre(self.recon_name, "Truck", bs.traf.lat[truckidx], 
@@ -456,7 +456,7 @@ class DeliverConquer(Entity):
 
         success = 'sufficient savings' if eta_m + penalty < eta_r else \
                     'insufficient savings'
-        print(f'Reconaissance successfull, yielded in {success}')
+        # print(f'Reconaissance successfull, yielded in {success}')
         if eta_r < eta_m + penalty:
             # We asserted the potential of serving next customer by drone
             # This however adds time to the makespan
@@ -467,7 +467,7 @@ class DeliverConquer(Entity):
             return
         # The modified time reduces the makespan
         # Therefore we change the plans and serve the next customer by drone
-        print(f'Serving customer {dcustid} by drone')
+        # print(f'Serving customer {dcustid} by drone')
 
         # Reroute the 'real' truck
         # This is phase 3 starting here below...
@@ -552,6 +552,9 @@ class DeliverConquer(Entity):
         # already been passed. It should also have the real truck as its parent
         # We also want to add drones that are performing their rendezvous,
         # since we do not want to reroute these
+        # Also, the operation should not appear in the active operations of the
+        # We also do not want to consider it in that case, because it is being
+        # served right now (don't want to add it again)
         op_drones = {
             drone_id: drone_info for drone_id, drone_info in 
                 bs.traf.Operations.drone_manager.active_drones.items()
@@ -563,12 +566,18 @@ class DeliverConquer(Entity):
                     # Reroute to its sortie if this is the case
                     not drone_info['status']
                     # Case 2: The drone's 'op_type' is 'RENDEZVOUS'
+                    # AND it is not being served yet
                     # Reroute to where it is performing the rendezvous
-                    or bs.traf.Operations.operational_states.get
+                    or (bs.traf.Operations.operational_states.get
                             (drone_id, {}).get('op_type') == ['RENDEZVOUS']
+                        and not drone_id in bs.traf.Operations.
+                        operational_states.get(self.truckname, {}).
+                                                            get('children', [])
+                        )
                     )
                 )
                     }
+        self.checker = op_drones
         
         # In case we dont have any drones to launch, we want the end (B)
         # Location to be equal to the start (A) location, since we do not add
@@ -576,8 +585,8 @@ class DeliverConquer(Entity):
         B = A
 
         for drone in op_drones:
-            # TODO implement small TSP here of up to 4 drones such that we
-            # also get inbetween optimality
+            # TODO implement small TSP here such that we also get inbetween 
+            # optimality
             op_loc = 'i' if drone not in bs.traf.Operations.operational_states\
                             else 'k'
             B = (op_drones[drone][f'lat_{op_loc}'], 
@@ -679,6 +688,7 @@ class DeliverConquer(Entity):
         mp = LR_PuLP(L, P, t_ij, t_jk, T_i, T_k, T_ik, self.alpha, self.beta,
                                                 self.bigM)
         mp.create_model()
+        mp.set_printoptions(False)
         mp.solve()
         
         truck_name = bs.traf.id[truckidx]
@@ -811,10 +821,12 @@ class DeliverConquer(Entity):
         # Filter drones that actually exist (i.e. have truck as parent)
         truck_drones = {drone_id: drone_info for drone_id, drone_info in
                         bs.traf.Operations.drone_manager.active_drones.items() 
-                        if drone_info['truck']==self.truckname}
+                        if drone_info['truck'] == self.truckname}
         for drone in truck_drones:
             # If the drone is the child that we just spawned, we do not have to
             # do anything
+            # or if the drone is performing its rendezvous, then we also want
+            # to leave it to do its thing
             if drone == child or bs.traf.Operations.operational_states.get \
                             (drone, {}).get('op_type') == ['RENDEZVOUS']:
                 continue
@@ -833,8 +845,8 @@ class DeliverConquer(Entity):
             wpname_k = rte.wpname[wpid_k]
 
             if not recon:
-                print(f"Changed pickup point of {drone} to {wpname_k} " +
-                        f"during spawning drone {child}")
+                # print(f"Changed pickup point of {drone} to {wpname_k} " +
+                #         f"during spawning drone {child}")
                 # Modify parameters of drone manager first
                 bs.traf.Operations.drone_manager.active_drones[drone]\
                                             ['lat_k'] = lat_k
@@ -861,23 +873,22 @@ class DeliverConquer(Entity):
                 # 1. Remove last wp (wp_k)
                 # 2. add new wpk
                 # 3. re-add operation point point
-                droneidx = bs.traf.id.index(drone)
-                dronerte = bs.traf.ap.route[droneidx]
-                wp_to_del = get_wpname(
-                    f"{truck_drones[drone]['lat_k']}" +
-                    f"/{truck_drones[drone]['lon_k']}",
-                    dronerte)
-                cur_wp = dronerte.iactwp
-                # Delete old wp k
-                bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
-                # Add new wp k
-                bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
-                                lat_k, lon_k, self.cruise_alt, 
-                                self.cruise_spd, 'TURNSPD', 3)
-                # Add the rendezvous to new k 
-                bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
-                    f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
-                dronerte.direct(droneidx, dronerte.wpname[cur_wp])
+                if not recon:
+                    droneidx = bs.traf.id.index(drone)
+                    dronerte = bs.traf.ap.route[droneidx]
+                    # wp k is the last wp in the drone's route
+                    wp_to_del = dronerte.wpname[-1]
+                    cur_wp = dronerte.iactwp
+                    # Delete old wp k
+                    bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
+                    # Add new wp k
+                    bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
+                                    lat_k, lon_k, self.cruise_alt, 
+                                    self.cruise_spd, 'TURNSPD', 3)
+                    # Add the rendezvous to new k 
+                    bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
+                        f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
+                    dronerte.direct(droneidx, dronerte.wpname[cur_wp])
             else:
                 # Here we want to re-add the sortie, because we know i is 
                 # in the route (we design for that)

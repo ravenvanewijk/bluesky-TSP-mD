@@ -37,6 +37,10 @@ class LR_PuLP:
         self.alpha = alpha
         self.beta = beta
         self.M = M
+        self.verbose = True
+    
+    def set_printoptions(self, setting: bool):
+        self.verbose = setting
 
     def create_model(self):
         """Method to create the model. Sets up constraints, objective function,
@@ -135,13 +139,13 @@ class LR_PuLP:
                                     self.t_ij[self.launch_location] + \
                                     self.t_jk[self.pickup_location]
 
-            print(f"Optimal launch location: {self.launch_location}")
-            print(f"Optimal pickup location: {self.pickup_location}")
-            print(f"Waiting time: {self.waiting_time}")
-            print(f"Drone Traveling time: {d_traveling_time}")
-            print(f"Truck Travelling time: {t_traveling_time}")
-            # print(f"{waiting_entity} is waiting at the pickup location.")
-            print(f"Arrival at launch in : {self.T_i[self.launch_location]}")
-
+            if self.verbose:
+                print(f"Optimal launch location: {self.launch_location}")
+                print(f"Optimal pickup location: {self.pickup_location}")
+                print(f"Waiting time: {self.waiting_time}")
+                print(f"Drone Traveling time: {d_traveling_time}")
+                print(f"Truck Travelling time: {t_traveling_time}")
+                print(f"Arrival at launch in : {self.T_i[self.launch_location]}")
         else:
-            print("No optimal solution found")
+            if self.verbose:
+                print("No optimal solution found")
