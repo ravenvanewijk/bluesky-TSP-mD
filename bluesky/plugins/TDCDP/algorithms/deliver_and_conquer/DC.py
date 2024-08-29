@@ -426,7 +426,7 @@ class DeliverConquer(Entity):
                                                             dcustid, ncustid)
             rte_recon = bs.traf.ap.route[reconidx]
         
-            penalty = self.reschedule_existing_drones(reconidx, dcustid)
+            penalty = self.reschedule_existing_drones(reconidx)
         except NoOptimalSolutionError:
             # We asserted the potential of serving next customer by drone
             # There are however no solutions within the range of the drone
@@ -486,7 +486,7 @@ class DeliverConquer(Entity):
         # This is phase 3 starting here below...
         max_cust, uav_lat, uav_lon, child = self.reroute_truck(truckidx, 
                                                             dcustid, ncustid)
-        self.reschedule_existing_drones(truckidx, dcustid, child)
+        self.reschedule_existing_drones(truckidx, child)
 
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1], uav_lat], 
         #                     [rte.wplon[:truckwpidx + 1], uav_lon],
@@ -738,7 +738,7 @@ class DeliverConquer(Entity):
         
         return cust_max, uav_lat, uav_lon, child
     
-    @timed_function(dt = bs.sim.simdt * 10)
+    @timed_function(dt=bs.sim.simdt * 10)
     def add_routepiece(self, recon=None):
         """Function to add routepiece(s) and delivery commands.
         Keeps into account the commands that have already been added.
@@ -828,8 +828,14 @@ class DeliverConquer(Entity):
                 # bs timetick
                 bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
 
-    def reschedule_existing_drones(self, truckidx, dcustid, child=None):
+    # @timed_function(dt=bs.sim.simdt*200)
+    def reschedule_existing_drones(self, truckidx=None, child=None):
         
+        # if truckidx == None:
+        #     print('were reerouting even though we didnt spawn a drone')
+        #     truckidx = bs.traf.id.index(self.truckname)
+        #     bs.traf.ap.route[truckidx].deldroneops(truckidx)
+
         rte = bs.traf.ap.route[truckidx]
         recon = True if bs.traf.id[truckidx] == self.recon_name else False
         penalty = 0
@@ -852,7 +858,7 @@ class DeliverConquer(Entity):
             # In case we are rescheduling the real drones we actually do not 
             # care about the penalty but we obtain it anyway
             wpid_k, penalty_i = self.recalculate_k(
-                                    truckidx, rte, drone, dcustid
+                                    truckidx, rte, drone
                                             )
             penalty += penalty_i
             lat_k = rte.wplat[wpid_k]
@@ -881,9 +887,7 @@ class DeliverConquer(Entity):
                     wpname_k, 'RENDEZVOUS', self.rendezvous_time, drone)
 
                 # Only if the drone is in air we want to modify the last wp
-                # If it is not spawned yet the routing commands are not 
-                # given yet so we can omit these. But in this case we do have 
-                # to modify it manually
+                # In this case we do have to modify it manually
                 # steps:
                 # 1. Remove last wp (wp_k)
                 # 2. add new wpk
@@ -905,9 +909,9 @@ class DeliverConquer(Entity):
                         f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
                     dronerte.direct(droneidx, dronerte.wpname[cur_wp])
             else:
-                # Here we want to re-add the sortie, because we know i is 
-                # in the route (we design for that)
-                # We have the new wp k as well, and we know the drone has not 
+                # If it is not spawned yet the routing commands are not 
+                # given yet so we can omit these.
+                # We have the new wp k, and we know the drone has not 
                 # been launched yet. So, add entire sortie
                 args = (
                     truckidx, f"{truck_drones[drone]['lat_i']}" +
@@ -936,14 +940,22 @@ class DeliverConquer(Entity):
 
         return penalty
 
-    def recalculate_k(self, truckidx, rte, drone, dcustid):
+    def recalculate_k(self, truckidx, rte, drone):
+        
+        # In case its a real run the dronable cust is already removed so we 
+        # need to apply a correction
+        cor = 0 if  bs.traf.id[truckidx] == self.recon_name else -1
 
         active_drones = bs.traf.Operations.drone_manager.active_drones
         # Define look ahead window: drone can be picked up a maximum of M + 1 
         # customers later than the current drone customer
-        cust_max = self.model.P[0].tour\
-                            [min(self.model.P[0].tour.index(dcustid) + \
-                                int(self.M), 
+        curcust_idx = self.model.P[0].tour.index(self.current_route[0])
+        if curcust_idx == 0:
+            # dont count the first depot, set it to the last one in that case
+            curcust_idx = len(self.model.P[0].tour) - 1
+        
+        cust_max = self.model.P[0].tour \
+                            [min(curcust_idx + cor + int(self.M), 
                                 len(self.model.P[0].tour) - 1)]
         cust_max_loc = self.customers[cust_max].location
         max_wp = find_index_with_tolerance(cust_max_loc,
@@ -1033,7 +1045,8 @@ class DeliverConquer(Entity):
                 drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
                         self.vspd_up, self.vspd_down, self.cruise_alt, 3.5)
             
-            distflown = bs.traf.distflown if drone in bs.traf.id else 0
+            distflown = bs.traf.distflown[bs.traf.id.index(drone)] if drone \
+                                                        in bs.traf.id else 0
             if not in_range(dist_ij + dist_jk, self.R, distflown):
                 continue
 

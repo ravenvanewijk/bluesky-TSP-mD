@@ -162,6 +162,37 @@ class TDRoute(Route):
                     acrte.children[wpid_k] = [args[0]]
                 else:
                     acrte.children[wpid_k].extend([args[0]])
+    @staticmethod
+    def deldroneops(truckidx: 'acid'):
+        """Delete all drone operations in the route of the truck"""
+        rte = bs.traf.ap.route[truckidx]
+        droneop_wps = [i for i, entry in enumerate(rte.op_type) if 
+                        entry == ['SORTIE'] or entry == ['RENDEZVOUS']]
+
+        # Remove all wps with a single operation, either a single rendezvous
+        # or sortie
+        for droneop_wp in droneop_wps:
+            rte.operation_wp[droneop_wp] = False
+            rte.operation_duration[droneop_wp] = [None]
+            rte.children[droneop_wp] = [None]
+            rte.op_type[droneop_wp] = None
+
+        dronemultiop_wps = [i for i, entry in enumerate(rte.op_type) if 
+                        entry and ('SORTIE' in entry or 'RENDEZVOUS' in entry)]
+
+        for dronemultiop_wp in dronemultiop_wps:
+            if 'DELIVERY' in rte.op_type[dronemultiop_wp]:
+                idx_to_keep = rte.op_type[dronemultiop_wp].index('DELIVERY')
+                duration = rte.operation_duration[dronemultiop_wp][idx_to_keep]
+                rte.operation_wp[dronemultiop_wp] = True
+                rte.operation_duration[dronemultiop_wp] = [duration]
+                rte.children[dronemultiop_wp] = [None]
+                rte.op_type[dronemultiop_wp] = ['DELIVERY']
+            else:
+                rte.operation_wp[dronemultiop_wp] = False
+                rte.operation_duration[dronemultiop_wp] = [None]
+                rte.children[dronemultiop_wp] = [None]
+                rte.op_type[dronemultiop_wp] = None
 
     @stack.command(aliases=("DIRECTTO", "DIRTO"))
     @staticmethod
