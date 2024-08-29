@@ -198,7 +198,7 @@
       "vs_min": -7.8232,
       "vs_max": 15.6464,
       "h_max": 50,
-      "d_range_max": 10
+      "d_range_max": 9.656
     }
   },
   "M102": {
@@ -215,7 +215,7 @@
       "vs_min": -7.8232,
       "vs_max": 15.6464,
       "h_max": 50,
-      "d_range_max": 10
+      "d_range_max": 19.312
     }
   },
   "M103": {
@@ -232,7 +232,7 @@
       "vs_min": -3.9116,
       "vs_max": 7.8232,
       "h_max": 50,
-      "d_range_max": 10
+      "d_range_max": 9.656
     }
   },
   "M104": {
@@ -249,7 +249,7 @@
       "vs_min": -3.9116,
       "vs_max": 7.8232,
       "h_max": 50,
-      "d_range_max": 10
+      "d_range_max": 19.312
     }
   }
 }  

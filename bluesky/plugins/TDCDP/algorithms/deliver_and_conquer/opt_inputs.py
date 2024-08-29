@@ -36,6 +36,8 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
         - t_ij: dict, dictionary with drone travel time from i to j
         - t_jk: dict, dictionary with drone travel time including delivery 
         from j to k
+        - d_j: dict, dictionary with the distance in nm from point i to
+        delivery location j
         - T_i: dict, dictionary with truck ETA at waypoint i
         - T_k: dict, dictionary with truck ETA including delivery time at 
         waypoint k
@@ -49,6 +51,7 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
     T_k = {}
     t_ij = {}
     t_jk = {}
+    d_j = {}
 
     for i in wp_indeces:
         # truck_t = calc_truck_ETA(acidx, i)
@@ -60,6 +63,8 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
         _, dist = kwikqdrdist(rte.wplat[i], rte.wplon[i],
                                 custlat, custlon)
         
+        d_j[i] = dist
+
         t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5)
         # + delivery drone time to account for delivery on way back
         t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5) + \
@@ -72,7 +77,7 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
     
     P = L = wp_indeces
 
-    return L, P, t_ij, t_jk, T_i, T_k, T_ik, B
+    return L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, B
 
 def calc_truck_ETA(acidx, lastwp):
     """
@@ -262,3 +267,13 @@ def calc_truck_ETA2(eta, op_duration):
                                 o[0] is not None else e, eta, op_duration))
     return sum(time_per_wp)
      
+
+def in_range(dist, R, distflown):
+    """Calculates whether the target location is in range of the drone
+    
+    Arguments: type, description
+    
+    dist: float, distance to the target location in nm
+    R: float, range of the drone in km
+    distflown: float, distance flown by the drone in m"""
+    return True if dist * nm + distflown <= R * 1000 else False

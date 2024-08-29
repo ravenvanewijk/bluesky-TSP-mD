@@ -116,3 +116,4 @@
 {"customer_id": 24, "served_time": 6078.55, "vehicle": "TRUCK", "coordinates": [42.85273079863737, -78.81507485143365]}
 {"customer_id": 25, "served_time": 6474.35, "vehicle": "UAV1_11", "coordinates": [42.87092999999999, -78.883244]}
 {"completion_time: ": 6923.0}
+{"customer_id": 1, "served_time": 227.75, "vehicle": "T_UAV1_1", "coordinates": [42.892684, -78.722783]}

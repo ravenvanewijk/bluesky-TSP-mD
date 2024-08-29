@@ -1,9 +1,10 @@
 import pulp
+from bluesky.tools.aero import nm
 
 class LR_PuLP:
 
-    def __init__(self, L, P, t_ij, t_jk, T_i, T_k, T_ik, alpha, beta, M,
-                                                                    B=10**9):
+    def __init__(self, L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, alpha, beta, M,
+                                                                    R=10**9):
         """
         Initialize PuLP model to solve the model to find optimal launch and 
         retrieval location. 
@@ -24,16 +25,17 @@ class LR_PuLP:
             potential launch location i to potential retrieval location k
             - alpha: float, relative importance of excess waiting time
             - beta: float, maximum allowed waiting time of truck or drone
-            - B: float, drone battery life [NOT CURRENTLY IMPLEMENTED]
+            - B: float, drone range in km
         """
         self.L = L
         self.P = P
         self.t_ij = t_ij
         self.t_jk = t_jk
+        self.d_j = d_j
         self.T_i = T_i
         self.T_k = T_k
         self.T_ik = T_ik
-        self.B = B
+        self.R = R
         self.alpha = alpha
         self.beta = beta
         self.M = M
@@ -72,10 +74,10 @@ class LR_PuLP:
         self.model += pulp.lpSum(self.y[k] for k in self.P) == 1, \
                                                             "pickup_location"
 
-        # Battery constraint for the drone
-        self.model += pulp.lpSum((self.t_ij[i] + self.t_jk[k]) * self.z[i][k]
-                                 for i in self.L for k in self.P) <= self.B, \
-                                                                    "battery"
+        # # Battery constraint for the drone
+        # self.model += pulp.lpSum((self.t_ij[i] + self.t_jk[k]) * self.z[i][k]
+        #                          for i in self.L for k in self.P) <= self.B, \
+        #                                                             "battery"
 
         # Linking constraints
         for i in self.L:
@@ -101,6 +103,11 @@ class LR_PuLP:
         # for i in self.L:
         #     for k in self.P:
         #         self.model += self.w[i][k] - self.alpha <= self.w_p[i][k]
+        # Constraint on the range of the drone
+        for i in self.L:
+            for k in self.P:
+                self.model += self.d_j[i] * self.x[i] + self.d_j[k] * \
+                    self.y[k] <= self.R / nm * 1000, f'drone_range_{i}_{k}'
         
         # Prohibit equal launch are retrieval location, algorithmic convenience
         for i in self.L:
