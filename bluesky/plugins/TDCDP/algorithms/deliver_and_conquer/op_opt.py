@@ -134,6 +134,8 @@ class LR_PuLP:
                     [self.pickup_location])
             self.truck_waiting_time = pulp.value(self.w_t[self.launch_location]
                                                         [self.pickup_location])
+            self.drone_waiting_time = pulp.value(self.w_d[self.launch_location]
+                                            [self.pickup_location])
             d_traveling_time = (self.t_ij[self.launch_location] + self.t_jk\
                 [self.pickup_location]) * pulp.value(self.z\
                     [self.launch_location][self.pickup_location])

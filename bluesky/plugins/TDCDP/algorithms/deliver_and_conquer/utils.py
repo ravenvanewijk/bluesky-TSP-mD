@@ -10,6 +10,7 @@ import matplotlib.colors as mcolors
 from shapely.geometry import Polygon, Point
 from warnings import warn
 from osmnx.convert import graph_to_gdfs
+from bluesky.tools.geo import kwikqdrdist
 
 class NoOptimalSolutionError(Exception):
     pass
@@ -217,6 +218,35 @@ def calculate_area(graph):
     area_sqm = gdf_utm['geometry'].area.iloc[0]
 
     return area_sqm
+
+def TSP_operations(A, op_drones, k_drones):
+    lat_A, lon_A = A  # Unpack the coordinates of point A
+    
+    # Calculate distance for each drone and store in a list of tuples (drone_id, distance)
+    distances = []
+    for drone_id, data in op_drones.items():
+
+        op_loc = 'k' if drone_id in k_drones else 'i'
+
+        lat_key = f'lat_{op_loc}'
+        lon_key = f'lon_{op_loc}'
+        
+        lat = data[lat_key]
+        lon = data[lon_key]
+        
+        # Calculate distance from this drone to point A
+        _, distance = kwikqdrdist(lat, lon, lat_A, lon_A)
+        
+        # Append the drone ID and distance to the list
+        distances.append((drone_id, distance))
+
+    # Sort drones by distance (smallest distance first)
+    distances.sort(key=lambda x: x[1])
+
+    # Create a new sorted dictionary based on the distances
+    sorted_drones = {drone_id: op_drones[drone_id] for drone_id, _ in distances}
+    
+    return sorted_drones
 
 def plot_route(G, lats, lons, title=None, labels=None, point_lat=None, 
                                             point_lon=None, point_label=None):

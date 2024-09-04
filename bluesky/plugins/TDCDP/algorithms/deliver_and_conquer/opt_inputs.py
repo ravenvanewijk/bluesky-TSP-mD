@@ -11,7 +11,8 @@ with open('bluesky/resources/performance/OpenAP/rotor/aircraft.json') as json_da
     json_data.close()
 
 def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt, 
-                hspd, vspd_up, vspd_down, delivery_time, truck_delivery_time):
+                hspd, vspd_up, vspd_down, delivery_time, truck_delivery_time,
+                interp=0, iactwp=0):
     """
     Calculates various inputs required for routing, 
     including truck and drone ETAs.
@@ -43,9 +44,7 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
         waypoint k
         - T_ik: dict, dictionary with time difference between truck ETAs at 
         waypoints i and k
-        - B: float, battery life of a drone
     """
-    B = 10**10
 
     T_i = {}
     T_k = {}
@@ -55,20 +54,21 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
 
     for i in wp_indeces:
         # truck_t = calc_truck_ETA(acidx, i)
-        truck_t = calc_truck_ETA2(eta[:i + 1], op_duration[:i + 1])
+        truck_t = calc_truck_ETA2(eta[iactwp:i + 1], op_duration[iactwp:i + 1],
+                                                                    interp)
         T_i[i] = truck_t
-        # + launch time
-        T_k[i] = truck_t + truck_delivery_time
+
+        T_k[i] = truck_t 
 
         _, dist = kwikqdrdist(rte.wplat[i], rte.wplon[i],
                                 custlat, custlon)
         
         d_j[i] = dist
 
-        t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5)
-        # + delivery drone time to account for delivery on way back
-        t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5) + \
+        t_ij[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5) + \
                                 delivery_time
+        # + delivery drone time to account for delivery on way back
+        t_jk[i] = calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, 3.5) 
 
     T_ik = {}
     for i in wp_indeces:
@@ -77,7 +77,7 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
     
     P = L = wp_indeces
 
-    return L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, B
+    return L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik
 
 def calc_truck_ETA(acidx, lastwp):
     """
@@ -173,7 +173,8 @@ def calc_truck_ETA(acidx, lastwp):
 
     return eta_time
 
-def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0):
+def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0,
+                                                                alt0=0):
     """
     Calculates drone travel time considering acceleration.
 
@@ -186,24 +187,39 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0):
     - a: float, horizontal acceleration in m/s^2
     """
 
+    if vspd0 < 0 :
+        alt_to_descend = alt0
+        alt_to_climb = 0
+    elif vspd0 > 0:
+        alt_to_climb = alt - alt0
+        alt_to_descend = alt
+    elif np.isclose(0, dist, atol=1e-2) and alt0 == 0:
+        # we're at the customer
+        alt_to_climb = 0
+        alt_to_descend = 0
+    elif hspd0 > 0:
+        # we're in cruise
+        alt_to_climb = 0
+        alt_to_descend = alt
+    else:
+        # not spawned yet or stationary at start loc
+        alt_to_climb = alt
+        alt_to_descend = alt
+
     a_h = a
     a_v = a * 2 / 3.5
 
-    v_time_down = calc_vertical_time(vspd_down, alt, a_v, abs(vspd0))
+    v_time_down = calc_vertical_time(vspd_down, alt_to_descend, a_v, abs(vspd0))
     h_time = calc_cruise_time(hspd, dist, a_h, hspd0)
 
-    # if vspd0 < 0:
-    #     # We are in descend phase already
-    #     return v_time_down
-    
-    if hspd0 > 0:
-        # We are in cruise phase, so neglect the ascend time required
-        total_time = v_time_down + h_time
-        return total_time
+    # if hspd0 > 0:
+    #     # We are in cruise phase, so neglect the ascend time required
+    #     total_time = v_time_down + h_time
+    #     return total_time
 
     # If we dont hit these blocks, we're just in ascend or we need to calculate
     # the entire mission time. Doesn't matter, same logic
-    v_time_up = calc_vertical_time(vspd_up, alt, a_v, vspd0)
+    v_time_up = calc_vertical_time(vspd_up, alt_to_climb, a_v, vspd0)
 
     total_time = h_time + v_time_up + v_time_down                                    
 
@@ -261,7 +277,18 @@ def calc_cruise_time(hspd, dist, a, hspd0=0):
     
     return h_time
 
-def calc_truck_ETA2(eta, op_duration):
+def calc_truck_ETA2(eta, op_duration, interp=0):
+    """Calculates the ETA of the truck to a certain location. The ETAs per 
+    waypoint must be given and of same size as op_duration. Calculates the ETA
+    up until the specified waypoint (can be modified by slicing the input).
+    
+    Params: type, description
+    
+    - eta: list, list of time required to arrive at waypoint (NOT cumulative)
+    - op_duration: list, list of the operational time required
+    - interp: float, percentage of the way already progressed to first wp """
+    if len(eta) > 0:
+        eta[0] = eta[0] * (1 - interp)
     # Add operational times
     time_per_wp = list(map(lambda e, o: e + sum(filter(None, o)) if o and 
                                 o[0] is not None else e, eta, op_duration))

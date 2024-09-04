@@ -24,7 +24,7 @@ import random
 import matplotlib.pyplot as plt
 from roadroute_lib import roadroute, construct_scenario
 from shapely.ops import linemerge
-from shapely import Point
+from shapely import Point, LineString
 from bluesky.traffic.route import Route
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     NoOptimalSolutionError,
@@ -37,7 +37,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     extract_arguments,
     plot_route,
     get_drone_id,
-    get_available_drone
+    get_available_drone,
+    TSP_operations
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
@@ -219,7 +220,7 @@ class DeliverConquer(Entity):
                             self.lr_locs], ignore_index=True
                                         )
         
-        # self.plot_graph(True)
+        # self.plot_graph(cust=True)
 
     def calc_basic_tsp(self, problem_name):
         """Calculate TSP path without any drones, only 1 truck
@@ -589,16 +590,18 @@ class DeliverConquer(Entity):
                     )
                 )
                     }
-        self.checker = op_drones
         
         # In case we dont have any drones to launch, we want the end (B)
         # Location to be equal to the start (A) location, since we do not add
         # any additional linepieces here
         B = A
 
+        # Small nearest location TSP
+        op_drones = TSP_operations(A, op_drones, 
+                                bs.traf.Operations.operational_states.keys())
+
         for drone in op_drones:
-            # TODO implement small TSP here such that we also get inbetween 
-            # optimality
+
             op_loc = 'i' if drone not in bs.traf.Operations.operational_states\
                             else 'k'
             B = (op_drones[drone][f'lat_{op_loc}'], 
@@ -614,6 +617,26 @@ class DeliverConquer(Entity):
             road_route, spd_lims, etas = roadroute(self.G, A, B)
 
             road_route_merged = linemerge(road_route)
+            if all(np.isclose(road_route_merged.coords[-1],
+                                road_route_merged.coords[-2])):
+                # Annoying error can occur where 3 waypoints overlap
+                # This can result in the truck missing a sortie or rendezvous
+                # So delete one of these waypoints
+                coords = list(road_route_merged.coords)
+                coords.pop(-2)
+                road_route_merged = LineString(coords)
+                spd_lims.pop(-2)
+
+            if all(np.isclose(road_route_merged.coords[0],
+                                road_route_merged.coords[1])):
+                # Annoying error can occur where 3 waypoints overlap
+                # This can result in the truck missing a sortie or rendezvous
+                # So delete one of these waypoints
+                coords = list(road_route_merged.coords)
+                coords.pop(1)
+                road_route_merged = LineString(coords)
+                spd_lims.pop(1)
+                
             wp_commands = construct_scenario(self.truckname, road_route_merged, 
                                                                     spd_lims)
             newcmds = extract_arguments(wp_commands, 
@@ -678,7 +701,7 @@ class DeliverConquer(Entity):
             eta = self.trucketa
             recon = False
         
-        L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, B = calc_inputs(
+        L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik= calc_inputs(
                                 truckidx, rte, eta, rte.operation_duration, 
                                 wp_indices, 
                                 self.customers[dcustid].location[0],
@@ -702,7 +725,6 @@ class DeliverConquer(Entity):
         mp.create_model()
         mp.set_printoptions(False)
         mp.solve()
-
         if not hasattr(mp, 'launch_location'):
             raise NoOptimalSolutionError("No optimal solution found")
         
@@ -828,13 +850,14 @@ class DeliverConquer(Entity):
                 # bs timetick
                 bs.traf.ap.route[truckidx].addoperationpoints(truckidx, *args)
 
-    # @timed_function(dt=bs.sim.simdt*200)
+    @timed_function(dt=bs.sim.simdt*600)
     def reschedule_existing_drones(self, truckidx=None, child=None):
         
-        # if truckidx == None:
-        #     print('were reerouting even though we didnt spawn a drone')
-        #     truckidx = bs.traf.id.index(self.truckname)
-        #     bs.traf.ap.route[truckidx].deldroneops(truckidx)
+        if not self.called:
+            return 
+        
+        if truckidx == None:
+            truckidx = bs.traf.id.index(self.truckname)
 
         rte = bs.traf.ap.route[truckidx]
         recon = True if bs.traf.id[truckidx] == self.recon_name else False
@@ -848,26 +871,52 @@ class DeliverConquer(Entity):
             # do anything
             # or if the drone is performing its rendezvous, then we also want
             # to leave it to do its thing
+            # or if the truck is already at that wp of the operation, also just 
+            # leave it to do its thing
             if drone == child or bs.traf.Operations.operational_states.get \
-                            (drone, {}).get('op_type') == ['RENDEZVOUS']:
+                            (drone, {}).get('op_type') == ['RENDEZVOUS'] \
+                            or drone in bs.traf.Operations.operational_states \
+                            .get(self.truckname, {}).get('children', []):
                 continue
 
+            # Remove old operations of that drone first. This has only not been
+            # done yet if the function call is a timed call.
+            # In other cases, the route is entire refreshed so this removal is 
+            # not strictly necessary but can be performed anyway
+            old_k = bs.traf.ap.route[truckidx].deldroneops(truckidx, drone)
             # Find new optimum of retrieval local that we can achieve on the 
             # truck route, along with the penalty that we get from this 
             # rerouting w.r.t the originally planned route
             # In case we are rescheduling the real drones we actually do not 
             # care about the penalty but we obtain it anyway
-            wpid_k, penalty_i = self.recalculate_k(
-                                    truckidx, rte, drone
-                                            )
+            try:
+                wpid_k, penalty_i = self.recalculate_k(
+                                        truckidx, rte, drone
+                                                )
+            except NoOptimalSolutionError:
+                return np.inf
+            
+            # # we want to check here if we can still change the wp or whether
+            # # the wp is already too close
+            if truck_drones[drone]['status'] != False:
+                droneidx = bs.traf.id.index(drone)
+                dronerte = bs.traf.ap.route[droneidx]
+                if bs.traf.ap.inturn[droneidx] and \
+                    dronerte.iactwp + 1 == len(dronerte.wplat) and old_k:
+                    # We cant change the wpid_k anymore, too close
+                    # so just select the wp we had before
+                    wpid_k = old_k
+                    penalty_i = 0
+                else:
+                    # Not too close to change, keep regular calculation
+                    pass
+
             penalty += penalty_i
             lat_k = rte.wplat[wpid_k]
             lon_k = rte.wplon[wpid_k]
             wpname_k = rte.wpname[wpid_k]
 
             if not recon:
-                # print(f"Changed pickup point of {drone} to {wpname_k} " +
-                #         f"during spawning drone {child}")
                 # Modify parameters of drone manager first
                 bs.traf.Operations.drone_manager.active_drones[drone]\
                                             ['lat_k'] = lat_k
@@ -902,8 +951,8 @@ class DeliverConquer(Entity):
                     bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
                     # Add new wp k
                     bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
-                                    lat_k, lon_k, self.cruise_alt, 
-                                    self.cruise_spd, 'TURNSPD', 3)
+                                    lat_k, lon_k, self.cruise_alt / ft, 
+                                    self.cruise_spd / kts, 'TURNSPD', 3)
                     # Add the rendezvous to new k 
                     bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
                         f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
@@ -941,7 +990,16 @@ class DeliverConquer(Entity):
         return penalty
 
     def recalculate_k(self, truckidx, rte, drone):
-        
+        """
+        This function recalculates the pickup point of a single drone. It uses
+        the same MILP as is used for the launch, but instead fixes the launch 
+        location to the location that has already been chosen.
+
+        Argument: type, description
+            - truckidx, int, idx of truck
+            - rte, bs Route object, route of the truck
+            - drone, str, name of the drone
+        """
         # In case its a real run the dronable cust is already removed so we 
         # need to apply a correction
         cor = 0 if  bs.traf.id[truckidx] == self.recon_name else -1
@@ -955,7 +1013,7 @@ class DeliverConquer(Entity):
             curcust_idx = len(self.model.P[0].tour) - 1
         
         cust_max = self.model.P[0].tour \
-                            [min(curcust_idx + cor + int(self.M), 
+                            [min(curcust_idx + cor + int(self.M) + 1, 
                                 len(self.model.P[0].tour) - 1)]
         cust_max_loc = self.customers[cust_max].location
         max_wp = find_index_with_tolerance(cust_max_loc,
@@ -965,115 +1023,133 @@ class DeliverConquer(Entity):
         eta = self.reconeta if bs.traf.id[truckidx] == self.recon_name else \
                                                             self.trucketa
 
-        # Get matching LR locations on route
-        wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
-
-        best_obj = np.inf
-        best_wp = None
-
         # find launch wp
         try:
             wpid_i = find_index_with_tolerance(
                 (active_drones[drone]['lat_i'], active_drones[drone]['lon_i']), 
                 rte.wplat, rte.wplon)
+            # set launch loc
+            L = np.array([wpid_i])
+            
         except ValueError:
             # wpid_i has been passed already, because the drone has been 
             # launched. Any wp can be selected now
-            # Set wpid_i to negative so we dont catch the next if statement
-            # Also ensures we get empty lists for the truck eta calcs,
-            # such that the truck eta is 0
-            wpid_i = -len(eta)
-        for wp in wp_indices:
-            # We want to calculate the total distance the drone has to traverse
-            # And at what time the it could be at a certain potential wp k 
-            if wpid_i >= wp:
-                # We don't want to pick up the drone at a point we have already
-                # passed for the launch
-                continue
-            
-            loc_A = (active_drones[drone]['lat_i'], active_drones[drone]\
-                        ['lon_i']) if not active_drones[drone]['status'] \
-                    else (bs.traf.lat[bs.traf.id.index(drone)], 
-                            bs.traf.lon[bs.traf.id.index(drone)])
-            #TODO later: streamline this because we dont have to recalculate 
-            # the ij a ton of times. only once is good in most cases
-            if active_drones[drone]['del_done'] and active_drones[drone]\
-                                                            ['status']!= False:
-                droneidx = bs.traf.id.index(drone) 
-                # delivery done so we dont have to account for time to customer
-                # logic for otw back
-                dist_ij = 0
-                drone_t_ij = 0
+            # Set wpid_i to current wp so we dont have any traveling time to 
+            # this wp
+
+            # Random launch loc
+            L = np.array([rte.iactwp])
+            wpid_i = L[0]
+
+        # Get matching LR locations on route
+        wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
+        wp_indices = wp_indices[wp_indices >= rte.iactwp]
+        # Sometimes we get an inaccurate location for location i because it has
+        # been passed and slightly modified, we want to include it anyway
+        if wpid_i not in wp_indices:
+            wp_indices = np.append(wp_indices, wpid_i)
+
+        _,p1 = kwikqdrdist(rte.wplat[rte.iactwp], rte.wplon[rte.iactwp], 
+                            bs.traf.lat[truckidx], bs.traf.lon[truckidx]) 
+        _,p2 = kwikqdrdist(rte.wplat[max(rte.iactwp - 1, 0)], 
+                            rte.wplon[max(rte.iactwp - 1, 0)], 
+                            bs.traf.lat[truckidx], bs.traf.lon[truckidx]) 
+
+        # Calculate the fraction of the way we have advanced to next wp
+        interp = p2 / (p1 + p2)
+        # Load default inputs, will overwrite a portion of these
+        _, P, t_ij, t_jk, d_j, T_i, T_k, T_ik = calc_inputs(
+                        truckidx, rte, eta, rte.operation_duration, 
+                        wp_indices, 
+                        active_drones[drone]['lat_j'],
+                        active_drones[drone]['lon_j'],
+                        self.cruise_alt, self.cruise_spd, 
+                        self.vspd_up, self.vspd_down,
+                        self.delivery_time, self.truck_delivery_time, 
+                        interp, rte.iactwp)
+
+        loc_A = (active_drones[drone]['lat_i'], active_drones[drone]\
+            ['lon_i']) if not active_drones[drone]['status'] \
+            else (bs.traf.lat[bs.traf.id.index(drone)], 
+                bs.traf.lon[bs.traf.id.index(drone)])
+
+        t_ij = {L[0]: t_ij.get(L[0], 0)}
+        T_i = {L[0]: T_i.get(L[0], 0)}
+        P = P[P > wpid_i]
+
+        if active_drones[drone]['del_done'] and active_drones[drone]\
+                                                        ['status']!= False:
+            droneidx = bs.traf.id.index(drone) 
+            # delivery done so we dont have to account for time to customer
+            # logic for otw back
+            t_ij = {L[0]: 0}
+            d_j[wpid_i] = 0
+            t_jk = {}
+            T_i[wpid_i] = 0
+            for wp in P:
+                
                 _, dist_jk = kwikqdrdist(loc_A[0], loc_A[1],
                     rte.wplat[wp],
                     rte.wplon[wp])
                 drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
                         self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
                         bs.traf.tas[droneidx], bs.traf.vs[droneidx])
+                t_jk[wp] = drone_t_jk 
 
-            else:
-                # Drone has either not been spawned yet or is on its way to 
-                # the customer
-                if active_drones[drone]['status'] != False:
-                    droneidx = bs.traf.id.index(drone) 
-                    # logic for otw to wp j
-                    # we need to add the drone speed to the calculations
-                    _, dist_ij = kwikqdrdist(loc_A[0], loc_A[1],
-                        active_drones[drone]['lat_j'], 
-                        active_drones[drone]['lon_j'])
-
-                    drone_t_ij = calc_drone_ETA(dist_ij, self.cruise_spd, 
-                        self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
-                            bs.traf.tas[droneidx], bs.traf.vs[droneidx]) + \
-                                    self.delivery_time
+        else:
+            # Drone has either not been spawned yet or is on its way to 
+            # the customer
+            if active_drones[drone]['status'] != False:
+                # logic for otw to wp j
+                # we need to add the drone speed to the calculations
+                droneidx = bs.traf.id.index(drone) 
+                tas = bs.traf.tas[droneidx]
+                vs = bs.traf.vs[droneidx]
+                T_i[wpid_i] = 0
+                alt = bs.traf.alt[droneidx]
+                if drone in bs.traf.Operations.operational_states:
+                    val = bs.traf.Operations.operational_states[drone]['t0'][0]
+                    red = bs.sim.simt - \
+                        val if val != np.inf else 0
+                    delivery_time = bs.traf.Operations.operational_states\
+                                    [drone]['op_duration'][0] - red
                 else:
-                    # drone has not been spawned, we can use stationary 
-                    # conditions
-                    _, dist_ij = kwikqdrdist(loc_A[0], loc_A[1],
-                        active_drones[drone]['lat_j'], 
-                        active_drones[drone]['lon_j'])
-
-                    drone_t_ij = calc_drone_ETA(dist_ij, self.cruise_spd, 
-                        self.vspd_up, self.vspd_down, self.cruise_alt, 3.5) +\
-                            self.delivery_time
-                
-                _, dist_jk = kwikqdrdist(
-                    active_drones[drone]['lat_j'], 
-                    active_drones[drone]['lon_j'],
-                    rte.wplat[wp],
-                    rte.wplon[wp])
-                drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
-                        self.vspd_up, self.vspd_down, self.cruise_alt, 3.5)
+                    delivery_time = self.delivery_time
             
-            distflown = bs.traf.distflown[bs.traf.id.index(drone)] if drone \
-                                                        in bs.traf.id else 0
-            if not in_range(dist_ij + dist_jk, self.R, distflown):
-                continue
+            else:
+                # drone has not been spawned, we can use stationary 
+                # conditions
+                tas = 0
+                vs = 0
+                alt = 0
+                delivery_time = self.delivery_time
 
-            drone_t = drone_t_ij + drone_t_jk
-            # Truck t from curloc to new potential k 
-            truck_t = calc_truck_ETA2(eta[:wp], 
-                                        rte.operation_duration[:wp])
-            drone_eta = drone_t + \
-                calc_truck_ETA2(eta[:wpid_i], rte.operation_duration[:wpid_i])
+            _, dist_ij = kwikqdrdist(loc_A[0], loc_A[1],
+                active_drones[drone]['lat_j'], 
+                active_drones[drone]['lon_j'])
 
-            waiting_time_truck = max(drone_eta - truck_t, 0)
-            waiting_time_drone = max(truck_t - drone_eta, 0)
-            obj = self.bigM * waiting_time_truck + drone_t + \
-                                                    waiting_time_drone
-            if obj < best_obj:
-                best_wp, best_truck_waiting_time, best_obj = \
-                                wp, waiting_time_truck, obj
-                w = (waiting_time_truck, drone_t)
+            d_j[wpid_i] = dist_ij
+
+            drone_t_ij = calc_drone_ETA(dist_ij, self.cruise_spd, 
+                self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
+                    tas, vs, alt) + delivery_time
                 
-        if best_obj == np.inf:
-            raise NoOptimalSolutionError("No optimal solution for relaunch " +
-                                            "found")
+            t_ij = {L[0]: drone_t_ij}
+
+        re_mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.alpha, 
+                                    self.beta, self.bigM, self.R)
+        re_mp.create_model()
+        re_mp.set_printoptions(False)
+        re_mp.solve()
 
         old_wait = active_drones[drone]['w_t']
 
-        penalty = best_truck_waiting_time - old_wait
-        return best_wp, penalty
+        if not hasattr(re_mp, 'pickup_location'):
+            raise NoOptimalSolutionError("No optimal solution found")
+
+        penalty = re_mp.truck_waiting_time - old_wait
+
+        return re_mp.pickup_location, penalty
 
     def resume(self):
         """Method to resume the simulation"""

@@ -5,10 +5,13 @@ import bluesky as bs
 from bluesky.tools import geo
 from bluesky.tools.aero import ft, g0, nm, mach2cas
 from bluesky.tools.misc import degto180, txt2alt, txt2spd
+from bluesky.tools.geo import kwikqdrdist
 from bluesky import stack
 from bluesky.stack.cmdparser import command
 from bluesky.stack.argparser import argparsers
 from bluesky.plugins.TDCDP.TDdronemanager import get_wpname
+from roadroute_lib.construct_scenario import sharpturn_lim, turn_lim, \
+                                            sharpturn_spd, turn_spd
 
 def init_plugin():
     # Configuration parameters
@@ -163,36 +166,75 @@ class TDRoute(Route):
                 else:
                     acrte.children[wpid_k].extend([args[0]])
     @staticmethod
-    def deldroneops(truckidx: 'acid'):
-        """Delete all drone operations in the route of the truck"""
+    def deldroneops(truckidx: 'acid', droneid):
+        """Delete all drone operations of a specific drone in the route of the 
+        truck"""
+        rendezvous_wp = None
         rte = bs.traf.ap.route[truckidx]
-        droneop_wps = [i for i, entry in enumerate(rte.op_type) if 
-                        entry == ['SORTIE'] or entry == ['RENDEZVOUS']]
-
-        # Remove all wps with a single operation, either a single rendezvous
-        # or sortie
+        # This will just return the waypoints where only this drone is being 
+        # operated, no other operations
+        droneop_wps = [i for i, entry in enumerate(rte.children) if 
+                        droneid in entry]
+        
         for droneop_wp in droneop_wps:
-            rte.operation_wp[droneop_wp] = False
-            rte.operation_duration[droneop_wp] = [None]
-            rte.children[droneop_wp] = [None]
-            rte.op_type[droneop_wp] = None
+            nr_ops = len(rte.op_type[droneop_wp])
+            truckid = bs.traf.id[truckidx]
+            # If it is a single operation happening here, we can remove all 
+            # operations altogether
+            if nr_ops == 1:
+                if rte.op_type[droneop_wp][0] == 'RENDEZVOUS':
+                    rendezvous_wp = droneop_wp
+                rte.operation_wp[droneop_wp] = False
+                rte.operation_duration[droneop_wp] = [None]
+                rte.children[droneop_wp] = [None]
+                rte.op_type[droneop_wp] = None
 
-        dronemultiop_wps = [i for i, entry in enumerate(rte.op_type) if 
-                        entry and ('SORTIE' in entry or 'RENDEZVOUS' in entry)]
+                lat_prev = rte.wplat[max(droneop_wp - 1, 0)]
+                lon_prev = rte.wplon[max(droneop_wp - 1, 0)]
+                lat_cur  = rte.wplat[droneop_wp]
+                lon_cur  = rte.wplon[droneop_wp]
+                lat_next = rte.wplat[min(droneop_wp + 1, len(rte.wplat) - 1)]
+                lon_next = rte.wplon[min(droneop_wp + 1, len(rte.wplat) - 1)]
 
-        for dronemultiop_wp in dronemultiop_wps:
-            if 'DELIVERY' in rte.op_type[dronemultiop_wp]:
-                idx_to_keep = rte.op_type[dronemultiop_wp].index('DELIVERY')
-                duration = rte.operation_duration[dronemultiop_wp][idx_to_keep]
-                rte.operation_wp[dronemultiop_wp] = True
-                rte.operation_duration[dronemultiop_wp] = [duration]
-                rte.children[dronemultiop_wp] = [None]
-                rte.op_type[dronemultiop_wp] = ['DELIVERY']
+                # Reset the old settings of this wp
+                a1, _ = kwikqdrdist(lat_prev,lon_prev,lat_cur,lon_cur)
+                a2, _ = kwikqdrdist(lat_cur,lon_cur,lat_next,lon_next)
+                angle=abs(a2-a1)
+                if angle>180:
+                    angle=360-angle
+                if angle > sharpturn_lim:
+                    rte.wpturnspd[droneop_wp] = turn_spd
+                    rte.wpflyby[droneop_wp] = False
+                    rte.wpflyturn[droneop_wp] = True
+                elif angle > turn_lim:
+                    rte.wpturnspd[droneop_wp] = sharpturn_spd
+                    rte.wpflyby[droneop_wp] = False
+                    rte.wpflyturn[droneop_wp] = True
+                else:
+                    rte.wpflyby[droneop_wp] = True
+                    rte.wpflyturn[droneop_wp] = False
             else:
-                rte.operation_wp[dronemultiop_wp] = False
-                rte.operation_duration[dronemultiop_wp] = [None]
-                rte.children[dronemultiop_wp] = [None]
-                rte.op_type[dronemultiop_wp] = None
+                i = 0
+                ch = 0
+                while i < len(rte.op_type[droneop_wp]):
+                    op = rte.op_type[droneop_wp][i]
+                    if op in ['RENDEZVOUS', 'SORTIE'] and \
+                            rte.children[droneop_wp][ch] == droneid:
+                        if rte.op_type[droneop_wp][i] == 'RENDEZVOUS':
+                            rendezvous_wp = droneop_wp
+                        del rte.operation_duration[droneop_wp][i]
+                        del rte.children[droneop_wp][ch]
+                        del rte.op_type[droneop_wp][i]
+                    elif op in ['RENDEZVOUS', 'SORTIE']:
+                        i += 1
+                        ch += 1
+                    else:
+                        i += 1
+                # If all children are deleted, set rte.children back to [None]
+                if rte.children[droneop_wp] == []:
+                    rte.children[droneop_wp] = [None]
+
+        return rendezvous_wp
 
     @stack.command(aliases=("DIRECTTO", "DIRTO"))
     @staticmethod
