@@ -79,6 +79,7 @@ class TDRoute(Route):
         # Args are only valid for SORTIE type modification and come in this order: 
         # type, UAVnumber, lat_j, lon_j, wpname_k, alt, spd, servicetime, recoverytime
         wptype = wptype.upper()
+        wptype = wptype.strip()
         wpname = wpname.upper()
         if len(args) !=0 and wptype == 'DELIVERY':
             bs.scr.echo('Invalid number of operational values, argument number must be 0 for delivery\

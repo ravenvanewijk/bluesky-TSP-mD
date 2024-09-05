@@ -25,6 +25,30 @@ def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-5):
             return idx
     raise ValueError(f"Coordinates {latlon} not found in route within tolerance.")
 
+def find_matching_customer(customers, target_lat, target_lon, tolerance=1e-6):
+    """
+    Find a customer whose location matches the given latitude and longitude.
+    
+    Parameters:
+    customers (list): List of customer objects, each having a 'location' 
+    attribute (lat, lon).
+    target_lat (float): Latitude of the target location.
+    target_lon (float): Longitude of the target location.
+    tolerance (float): The tolerance level for comparing the coordinates 
+    (default is 1e-6).
+    
+    Returns:
+    matching_customer: The customer object with matching coordinates, 
+    or None if no match is found.
+    """
+    for customer in customers:
+        lat, lon = customer.location
+        if abs(lat - target_lat) < tolerance and \
+            abs(lon - target_lon) < tolerance:
+            return customer.id
+    
+    raise ValueError
+
 def sample_points(G: nx.MultiGraph, n: int, seed: int = None) -> gpd.GeoSeries:
     """
     ADAPTED FROM https://github.com/gboeing/osmnx/blob/main/osmnx/utils_geo.py
@@ -277,7 +301,7 @@ class Customer:
     """
     Class to represent a customer instance.
     """
-    def __init__(self, id, location, wt, drone_eligible=True):
+    def __init__(self, id, location, del_unc, drone_eligible=True):
         """Initialize a customer instance
         args: type, description:
         - id: int, identifyer of the customer
@@ -286,7 +310,7 @@ class Customer:
         """
         self.id = id
         self.location = location
-        self.wt = wt
+        self.del_unc = del_unc
         self.drone_eligible = drone_eligible
         self.delivery_time = None
 

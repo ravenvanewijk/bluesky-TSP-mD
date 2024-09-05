@@ -38,7 +38,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.utils import (
     plot_route,
     get_drone_id,
     get_available_drone,
-    TSP_operations
+    TSP_operations,
+    find_matching_customer
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     calc_inputs,
@@ -93,7 +94,7 @@ class DeliverConquer(Entity):
             - problem_name: str, name of the problem used to look up timing 
             table of the truck
             - *args: str (floats), series of floats that describe the customer 
-            locations lat/lon and package weight [lbs]
+            locations lat/lon and stochastic part of delivery time [s]
             should be a multiple of 3
             """
         d_data = raw_data['M'+vehicle_group]['envelop']
@@ -174,14 +175,12 @@ class DeliverConquer(Entity):
 
         args = np.reshape(args, (int(len(args)/3), 3)).astype(float)
         self.custlocs = []
-        parcelwt = []
 
         for custdata in args:
             self.custlocs.append([custdata[0], custdata[1]])
-            parcelwt.append(custdata[2])
 
         # Create customer instances
-        self.customers = [Customer(id=i, location=data[:-1], wt=data[-1], 
+        self.customers = [Customer(id=i, location=data[:-1], del_unc=data[-1], 
                         drone_eligible=False if data[-1]==100 else True) 
                         for i, data in enumerate(args)]
 
@@ -275,8 +274,8 @@ class DeliverConquer(Entity):
                 continue
             op_text = (f"ADDOPERATIONPOINTS {self.truckname},"
                 f"{self.customers[v].location[0]}/"
-                f"{self.customers[v].location[1]},"
-                f"DELIVERY,{self.truck_delivery_time}")
+                f"{self.customers[v].location[1]},DELIVERY, "
+                f"{(self.truck_delivery_time + self.customers[v].del_unc)}")
             self.added_deliveries.append(str(v))
             delivery_cmds.append(op_text)
             self.delivery_cmds[f'{v}'] = op_text
@@ -742,7 +741,8 @@ class DeliverConquer(Entity):
             self.customers[dcustid].location[1],
             f'{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}',
             self.cruise_alt / ft, self.cruise_spd / kts,
-            self.delivery_time, self.rendezvous_time)
+            self.delivery_time + self.customers[dcustid].del_unc,
+            self.rendezvous_time)
 
         uav_lat = [rte.wplat[mp.launch_location], 
                 self.customers[dcustid].location[0], 
@@ -962,6 +962,9 @@ class DeliverConquer(Entity):
                 # given yet so we can omit these.
                 # We have the new wp k, and we know the drone has not 
                 # been launched yet. So, add entire sortie
+                cust_id = find_matching_customer(self.customers, 
+                    truck_drones[drone]['lat_j'], truck_drones[drone]['lon_j'])
+
                 args = (
                     truckidx, f"{truck_drones[drone]['lat_i']}" +
                                 f"/{truck_drones[drone]['lon_i']}",
@@ -971,7 +974,8 @@ class DeliverConquer(Entity):
                     f"{truck_drones[drone]['lat_k']}" +
                         f"/{truck_drones[drone]['lon_k']}", 
                     self.cruise_alt / ft, self.cruise_spd / kts,
-                    self.delivery_time, self.rendezvous_time
+                    self.delivery_time + self.customers[cust_id].del_unc, 
+                    self.rendezvous_time
                 )
 
                 if not recon:
@@ -1056,7 +1060,10 @@ class DeliverConquer(Entity):
                             bs.traf.lat[truckidx], bs.traf.lon[truckidx]) 
 
         # Calculate the fraction of the way we have advanced to next wp
-        interp = p2 / (p1 + p2)
+        if not (p1 + p2) == 0:
+            interp = p2 / (p1 + p2)
+        else:
+            interp = 0
         # Load default inputs, will overwrite a portion of these
         _, P, t_ij, t_jk, d_j, T_i, T_k, T_ik = calc_inputs(
                         truckidx, rte, eta, rte.operation_duration, 
@@ -1111,8 +1118,10 @@ class DeliverConquer(Entity):
                     val = bs.traf.Operations.operational_states[drone]['t0'][0]
                     red = bs.sim.simt - \
                         val if val != np.inf else 0
-                    delivery_time = bs.traf.Operations.operational_states\
-                                    [drone]['op_duration'][0] - red
+                        # We want to take into account the expected delivery
+                        # duration, not the actual one! We cannot foresee how
+                        # much time a delivery is going to take
+                    delivery_time = self.delivery_time - red
                 else:
                     delivery_time = self.delivery_time
             
