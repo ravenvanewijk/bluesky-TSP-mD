@@ -97,16 +97,7 @@ class Operations(Entity):
         t0 = len(op_type) * [np.inf]
         op_duration = acrte.operation_duration[iactwp]
         # get children at this node to add to the operational states
-        children = []
-        i = 0
-        for op in op_type:
-            if op == 'DELIVERY':
-                # Deliveries do not have children, do not increment index i 
-                children.append(None)
-            else:
-                # Sorties and rendezvouss do have children. Add the child by looking in the route and increment index
-                children.append(acrte.children[iactwp][i])
-                i += 1
+        children = acrte.children[iactwp]
         # log operation start to operation state dict. This will trigger the operation process.
         # This data is stored individually for each node and will be re-initialized once the simulation progresses
         self.operational_states[acid] = {

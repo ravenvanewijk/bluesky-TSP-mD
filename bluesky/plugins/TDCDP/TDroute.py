@@ -148,9 +148,20 @@ class TDRoute(Route):
             bs.traf.ap.route[vehicleidx].addoperationpoints(vehicleidx, 
                                 wpname_k, 'RENDEZVOUS', args[8], child)
 
-            if acrte.children[wpid][0] is None:
-                acrte.children[wpid] = [child]
+            # if acrte.children[wpid][0] is None:
+            #     acrte.children[wpid] = [child]
+            # else:
+            #     acrte.children[wpid].extend([child])
+
+            if acrte.children[wpid][0] is None and len(acrte.children[wpid]) == 1:
+                if acrte.op_type[wpid] is not None and acrte.op_type[wpid][0] == 'DELIVERY':
+                    # Case 1: acrte.children[wpid][0] is None and acrte.op_type[wpid][0] is 'DELIVERY'
+                    acrte.children[wpid] = [None, child]
+                else:
+                    # Case 2: Only acrte.children[wpid][0] is None (and not matching 'DELIVERY')
+                    acrte.children[wpid] = [child]
             else:
+                # Case 3: Only acrte.children[wpid][0] is not None
                 acrte.children[wpid].extend([child])
 
             return child
@@ -161,11 +172,19 @@ class TDRoute(Route):
                 wpid_k = acrte.wpname.index(wpname)
             else:
                 wpid_k = acrte.wpname.index(wpname.upper())
+
             if args:
-                if acrte.children[wpid_k][0] is None:
-                    acrte.children[wpid_k] = [args[0]]
+                if acrte.children[wpid_k][0] is None and len(acrte.children[wpid_k]) == 1:
+                    if acrte.op_type[wpid_k] is not None and acrte.op_type[wpid_k][0] == 'DELIVERY':
+                        # Case 1: acrte.children[wpid_k][0] is None and acrte.op_type[wpid_k][0] is 'DELIVERY'
+                        acrte.children[wpid_k] = [None, args[0]]
+                    else:
+                        # Case 2: Only acrte.children[wpid_k][0] is None (and not matching 'DELIVERY')
+                        acrte.children[wpid_k] = [args[0]]
                 else:
+                    # Case 3: Only acrte.children[wpid_k][0] is not None
                     acrte.children[wpid_k].extend([args[0]])
+
     @staticmethod
     def deldroneops(truckidx: 'acid', droneid):
         """Delete all drone operations of a specific drone in the route of the 
@@ -216,19 +235,15 @@ class TDRoute(Route):
                     rte.wpflyturn[droneop_wp] = False
             else:
                 i = 0
-                ch = 0
                 while i < len(rte.op_type[droneop_wp]):
                     op = rte.op_type[droneop_wp][i]
                     if op in ['RENDEZVOUS', 'SORTIE'] and \
-                            rte.children[droneop_wp][ch] == droneid:
+                            rte.children[droneop_wp][i] == droneid:
                         if rte.op_type[droneop_wp][i] == 'RENDEZVOUS':
                             rendezvous_wp = droneop_wp
                         del rte.operation_duration[droneop_wp][i]
-                        del rte.children[droneop_wp][ch]
+                        del rte.children[droneop_wp][i]
                         del rte.op_type[droneop_wp][i]
-                    elif op in ['RENDEZVOUS', 'SORTIE']:
-                        i += 1
-                        ch += 1
                     else:
                         i += 1
                 # If all children are deleted, set rte.children back to [None]
