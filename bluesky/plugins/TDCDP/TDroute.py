@@ -28,6 +28,7 @@ class TDRoute(Route):
         self.operation_duration = []
         self.children = []
         self.op_type = []
+        self.op_t0 = []
 
     @stack.command
     @staticmethod
@@ -45,6 +46,7 @@ class TDRoute(Route):
         acrte.operation_duration.extend(wpcount * [[None]])
         acrte.children.extend(wpcount * [[None]])
         acrte.op_type.extend(wpcount * [None])
+        acrte.op_t0.extend(wpcount * [None])
 
         if acrte.iactwp < 0:
             # Direct towards first waypoint
@@ -69,6 +71,7 @@ class TDRoute(Route):
         del acrte.operation_duration[wpidx]
         del acrte.children[wpidx]
         del acrte.op_type[wpidx]
+        del acrte.op_t0[wpidx]
 
         # Call regular command
         Route.delwpt(acidx, wpname)
@@ -124,6 +127,11 @@ class TDRoute(Route):
             acrte.op_type[wpid] = [wptype]
         else:
             acrte.op_type[wpid].extend([wptype])
+
+        if acrte.op_t0[wpid] is None:
+            acrte.op_t0[wpid] = [np.inf]
+        else:
+            acrte.op_t0[wpid].extend([np.inf])
 
         if wptype.upper() == 'SORTIE':
             if len(args[4].split('/')) == 2:
@@ -208,6 +216,7 @@ class TDRoute(Route):
                 rte.operation_duration[droneop_wp] = [None]
                 rte.children[droneop_wp] = [None]
                 rte.op_type[droneop_wp] = None
+                rte.op_t0[droneop_wp] = None
 
                 lat_prev = rte.wplat[max(droneop_wp - 1, 0)]
                 lon_prev = rte.wplon[max(droneop_wp - 1, 0)]
@@ -244,6 +253,7 @@ class TDRoute(Route):
                         del rte.operation_duration[droneop_wp][i]
                         del rte.children[droneop_wp][i]
                         del rte.op_type[droneop_wp][i]
+                        del rte.op_t0[droneop_wp][i]
                     else:
                         i += 1
                 # If all children are deleted, set rte.children back to [None]

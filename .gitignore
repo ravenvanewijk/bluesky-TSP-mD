@@ -94,3 +94,6 @@ ssd.obj
 *-checkpoint.py
 *-checkpoint.ipynb
 .ropeproject/config.py
+
+# #TDCDP
+# bluesky/plugins/TDCDP/datalogs

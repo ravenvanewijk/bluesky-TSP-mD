@@ -1,6 +1,7 @@
 import logging
 import json
 import os
+import re
 import numpy as np
 
 class DataLogger:
@@ -47,7 +48,7 @@ class DataLogger:
         json_data = json.dumps(data)
         self.logger.info(json_data)
 
-    def log_customer_service(self, data, acid, idx, cust_count):
+    def log_customer_service(self, data, acid, idx, cust_count, op_time):
         """Log a customer service entry to the log file.
 
         args: type, description:
@@ -68,7 +69,8 @@ class DataLogger:
             "customer_id": cust_count,
             "served_time": t,
             "vehicle": acid,
-            "coordinates": coords
+            "coordinates": coords,
+            "op_time": op_time
         }
 
         self.log_data(log_entry)
@@ -94,6 +96,14 @@ class DataLogger:
         """
         # Update filename and/or path if provided
         if new_filename:
+            # Define a regular expression pattern to match the 
+            # filename and capture the drone config, solve method, and uncertainty
+            pattern = r'^tbl_solutions_(\d+)_(\d+)_(\w+)_(\w+)$'
+
+            # Use re.match to check if the filename matches the pattern
+            match = re.match(pattern, new_filename)
+            if match:
+                new_log_dir = new_log_dir + '/' + match.group(1) + '/' + match.group(2)
             try:
                 ext = new_filename.split('.')[1]
                 if ext != 'jsonl':

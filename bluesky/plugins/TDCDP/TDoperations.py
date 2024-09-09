@@ -94,7 +94,7 @@ class Operations(Entity):
         op_type = acrte.op_type[iactwp]
         # Track operational status, useful to discover if all operations have finished
         op_status = len(op_type) * [False]
-        t0 = len(op_type) * [np.inf]
+        t0 = acrte.op_t0[iactwp]
         op_duration = acrte.operation_duration[iactwp]
         # get children at this node to add to the operational states
         children = acrte.children[iactwp]
@@ -180,7 +180,8 @@ class Operations(Entity):
                                                 self.operational_states[acid],
                                                 acid,
                                                 idx,
-                                                self.custs_served + 1
+                                                self.custs_served + 1,
+                                                bs.sim.simt - self.operational_states[acid]['t0'][idx]
                                                             )
                         # Increment customers served by 1
                         self.custs_served += 1
