@@ -72,6 +72,7 @@ class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
         self.seed = 11 # None for random seed, enter a number to add a seed
+        self.uncertainty = False
 
     def reset_added_cmds(self):
         self.added_route = []
@@ -80,7 +81,7 @@ class DeliverConquer(Entity):
         self.reconeta = []
     
     @stack.command
-    def deliver(self, vehicle_group, M, problem_name, *args):
+    def deliver(self, vehicle_group, cruise_spd, M, problem_name, *args):
         """Call the deliver and conquer algorithm to solve the routing to a \
         set of customers with a given number of drones.
         This will employ a clustering method to serve each cluster iteratively.
@@ -109,7 +110,7 @@ class DeliverConquer(Entity):
         self.truck_delivery_time = 30
         self.vehicle_group = vehicle_group
         self.cruise_alt = d_data['h_max']
-        self.cruise_spd = d_data['v_max']
+        self.cruise_spd = float(cruise_spd) # Already in kts!
         self.vspd_up = d_data['vs_max']
         self.vspd_down = np.abs(d_data['vs_min'])
         self.R = d_data['d_range_max']
@@ -190,6 +191,11 @@ class DeliverConquer(Entity):
         self.G = ox.load_graphml(filepath=path,
                                 edge_dtypes={'osmid': str_interpret,
                                             'reversed': str_interpret})
+
+    @stack.command(name='DRONEUNC')
+    def drone_uncertainty(self, setting, *args):
+        self.uncertainty = True
+        self.drone_spd_factors = [float(arg) for arg in args]
         
     def gen_lr_locs(self, cust_only = False):
         """Generate locations where an operation, i.e. a sortie or rendezvous
@@ -699,8 +705,8 @@ class DeliverConquer(Entity):
         else:
             eta = self.trucketa
             recon = False
-        
-        L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik= calc_inputs(
+
+        L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik = calc_inputs(
                                 truckidx, rte, eta, rte.operation_duration, 
                                 wp_indices, 
                                 self.customers[dcustid].location[0],
@@ -726,12 +732,19 @@ class DeliverConquer(Entity):
         mp.solve()
         if not hasattr(mp, 'launch_location'):
             raise NoOptimalSolutionError("No optimal solution found")
-        
         truck_name = bs.traf.id[truckidx]
         truck_drones = {drone_id: drone_info for drone_id, drone_info in
                         bs.traf.Operations.drone_manager.active_drones.items() 
                         if drone_info['truck']==truck_name}
         drone_id = get_available_drone(truck_drones)
+        dr_count = len(bs.traf.Operations.drone_manager.completed_ops.keys()) \
+            +len(bs.traf.Operations.drone_manager.active_drones.keys())
+        # We do want to add uncertainty here if that mode is selected!
+        # So get the drone count and apply the uncertainty factor here
+        if self.uncertainty:
+            cruise_spd = self.cruise_spd * self.drone_spd_factors[dr_count]
+        else:
+            cruise_spd = self.cruise_spd
         # Pass the optimized operation and its location to the routing module
         # This module will take care of the entire operation
         child = bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
@@ -740,7 +753,7 @@ class DeliverConquer(Entity):
             self.customers[dcustid].location[0], 
             self.customers[dcustid].location[1],
             f'{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}',
-            self.cruise_alt / ft, self.cruise_spd / kts,
+            self.cruise_alt / ft, cruise_spd,
             self.delivery_time + self.customers[dcustid].del_unc,
             self.rendezvous_time)
 
@@ -940,19 +953,21 @@ class DeliverConquer(Entity):
                 # steps:
                 # 1. Remove last wp (wp_k)
                 # 2. add new wpk
-                # 3. re-add operation point point
+                # 3. re-add operation point
                 if not recon:
                     droneidx = bs.traf.id.index(drone)
                     dronerte = bs.traf.ap.route[droneidx]
+                    dronespd = dronerte.wpspd[-1]
                     # wp k is the last wp in the drone's route
                     wp_to_del = dronerte.wpname[-1]
                     cur_wp = dronerte.iactwp
                     # Delete old wp k
                     bs.traf.ap.route[droneidx].deltdwpt(droneidx, wp_to_del)
                     # Add new wp k
+                    # Keep the uncertainty here as it was
                     bs.traf.ap.route[droneidx].addtdwaypoints(droneidx,
                                     lat_k, lon_k, self.cruise_alt / ft, 
-                                    self.cruise_spd / kts, 'TURNSPD', 3)
+                                    dronespd / kts, 'TURNSPD', 3)
                     # Add the rendezvous to new k 
                     bs.traf.ap.route[droneidx].addoperationpoints(droneidx, 
                         f'{lat_k}/{lon_k}', 'RENDEZVOUS', self.rendezvous_time)
@@ -964,6 +979,7 @@ class DeliverConquer(Entity):
                 # been launched yet. So, add entire sortie
                 cust_id = find_matching_customer(self.customers, 
                     truck_drones[drone]['lat_j'], truck_drones[drone]['lon_j'])
+                dronespd = truck_drones[drone]['spd']
 
                 args = (
                     truckidx, f"{truck_drones[drone]['lat_i']}" +
@@ -973,7 +989,7 @@ class DeliverConquer(Entity):
                     truck_drones[drone]['lon_j'],
                     f"{truck_drones[drone]['lat_k']}" +
                         f"/{truck_drones[drone]['lon_k']}", 
-                    self.cruise_alt / ft, self.cruise_spd / kts,
+                    self.cruise_alt / ft, dronespd,
                     self.delivery_time + self.customers[cust_id].del_unc, 
                     self.rendezvous_time
                 )
@@ -1121,7 +1137,7 @@ class DeliverConquer(Entity):
                         # We want to take into account the expected delivery
                         # duration, not the actual one! We cannot foresee how
                         # much time a delivery is going to take
-                    delivery_time = self.delivery_time - red
+                    delivery_time = max(self.delivery_time - red, 0)
                 else:
                     delivery_time = self.delivery_time
             

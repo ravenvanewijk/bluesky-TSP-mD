@@ -56,6 +56,24 @@ def calc_inputs(acidx, rte, eta, op_duration, wp_indeces, custlat, custlon, alt,
         # truck_t = calc_truck_ETA(acidx, i)
         truck_t = calc_truck_ETA2(eta[iactwp:i + 1], op_duration[iactwp:i + 1],
                                                                     interp)
+        # Add operational times of current ops
+        if bs.traf.id[acidx] in bs.traf.Operations.operational_states.keys():
+            op_state = bs.traf.Operations.operational_states['TRUCK']
+            op_status = op_state['op_status']
+            active_op = next((idx for idx, val in enumerate(op_status)\
+                            if not val), None)
+            for idx, op in enumerate(op_state['op_type']):
+                if op_state['op_type'][idx] == 'DELIVERY':
+                    duration = truck_delivery_time
+                else:
+                    duration = op_state['op_duration'][idx]
+                if idx == active_op:
+                    t0 = 0 if op_state['t0'][idx] == np.inf else op_state\
+                                                                    ['t0'][idx]
+                    truck_t += max(duration - (bs.sim.simt - t0), 0)
+                elif idx >active_op:
+                    truck_t += duration
+
         T_i[i] = truck_t
 
         T_k[i] = truck_t 
@@ -261,8 +279,7 @@ def calc_cruise_time(hspd, dist, a, hspd0=0):
     - a: float, horizontal acceleration in m/s^2
     """
     if hspd0 > hspd:
-        print('Something might be going wrong. Higher vspd than expected')
-        hspd0 = hspd
+        hspd = hspd0
 
     h_dist = dist * nm
     a_time = (hspd - hspd0) / a

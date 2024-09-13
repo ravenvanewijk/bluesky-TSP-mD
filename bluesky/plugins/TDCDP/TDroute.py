@@ -259,6 +259,8 @@ class TDRoute(Route):
                 # If all children are deleted, set rte.children back to [None]
                 if rte.children[droneop_wp] == []:
                     rte.children[droneop_wp] = [None]
+                if rte.operation_duration[droneop_wp] == []:
+                    rte.operation_duration[droneop_wp] = [None]
 
         return rendezvous_wp
 
