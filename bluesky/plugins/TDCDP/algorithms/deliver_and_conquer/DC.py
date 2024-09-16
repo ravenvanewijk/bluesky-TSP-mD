@@ -192,9 +192,12 @@ class DeliverConquer(Entity):
                                 edge_dtypes={'osmid': str_interpret,
                                             'reversed': str_interpret})
 
+    @stack.command(name='UNCERTAINTY')
+    def set_uncertainty(self, setting):
+        self.uncertainty = setting
+
     @stack.command(name='DRONEUNC')
-    def drone_uncertainty(self, setting, *args):
-        self.uncertainty = True
+    def drone_uncertainty(self, *args):
         self.drone_spd_factors = [float(arg) for arg in args]
         
     def gen_lr_locs(self, cust_only = False):
@@ -351,7 +354,8 @@ class DeliverConquer(Entity):
         """Calculates the potential savings of serving next customer by drone
         If time can be saved, a drone will be launched. Else, nothing is done
         """
-        if not self.called:
+        if not self.called or self.truckname in \
+                bs.traf.Operations.operational_states:
             return
 
         # Drones that are otw to their customers should also be counted
@@ -382,7 +386,7 @@ class DeliverConquer(Entity):
 
         if dronecount >= int(self.M):
             return
-            
+
         # Enter phase 2 if we have a drone at our disposal
         # Phase 2 is the reconaissance phase to scout if we can save time
         #_______________________________PHASE 2_______________________________

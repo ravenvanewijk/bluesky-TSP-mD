@@ -189,6 +189,13 @@ class Operations(Entity):
                             self.drone_manager.active_drones[acid]['del_done'] = True
                         except:
                             pass
+                
+                elif operation == 'STOP':
+                    if start_timer_check:
+                        self.start_timer(acid, idx)
+                    elif op_timer_check:
+                        # Stop is just 'waiting': no additional tasks
+                        self.mark_done(acid, idx)
 
                 elif operation == 'SORTIE':
                     drone_avail = self.drone_manager.drone_available(
@@ -289,10 +296,10 @@ class Operations(Entity):
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)
             self.data_logger.log_data({'completion_time: ': bs.sim.simt})
+            self.data_logger.shutdown()
+            stack.stack('RESET')
         else:
             self.trkdelqueue.append(idx)
-        
-        self.data_logger.shutdown()
         return True
 
     @timed_function(dt = bs.sim.simdt)

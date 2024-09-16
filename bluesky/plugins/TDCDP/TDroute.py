@@ -84,7 +84,7 @@ class TDRoute(Route):
         wptype = wptype.upper()
         wptype = wptype.strip()
         wpname = wpname.upper()
-        if len(args) !=0 and wptype == 'DELIVERY':
+        if len(args) !=0 and (wptype == 'DELIVERY' or wptype == 'STOP'):
             bs.scr.echo('Invalid number of operational values, argument number must be 0 for delivery\
                 type modification.')
             return
@@ -99,7 +99,7 @@ class TDRoute(Route):
                         Order: type, UAVnumber, lat_j, lon_j, wpname_k, alt, spd, servicetime, recoverytime')
             return
         
-        elif wptype not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS']:
+        elif wptype not in ['DELIVERY', 'SORTIE', 'RENDEZVOUS', 'STOP']:
             bs.scr.echo('Invalid operation type, please select from: DELIVERY, SORTIE OR RENDEZVOUS')
 
         vehicleid = bs.traf.id[vehicleidx]
@@ -109,6 +109,9 @@ class TDRoute(Route):
             # Check whether coordinates are given. If so, look up wpname
             prefer_later = True if wptype=='RENDEZVOUS' else False
             wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
+        
+        elif wpname == 'CURLOC':
+            wpname = acrte.wpname[acrte.iactwp + 1]
 
         wpid = acrte.wpname.index(wpname)
         # Modify TURNSPD to 2 for all delivery waypoints
@@ -133,10 +136,10 @@ class TDRoute(Route):
         else:
             acrte.op_t0[wpid].extend([np.inf])
 
-        if wptype.upper() == 'SORTIE':
+        if wptype == 'SORTIE':
             if len(args[4].split('/')) == 2:
                 # Check whether coordinates are given. If so, look up wpname. If not, None is returned
-                wpname_k = get_wpname(args[4], acrte, prefer_later=False)
+                wpname_k = get_wpname(args[4], acrte, prefer_later=True)
                 lat_k = args[4].split('/')[0]
                 lon_k = args[4].split('/')[1]
             else:
@@ -162,7 +165,8 @@ class TDRoute(Route):
             #     acrte.children[wpid].extend([child])
 
             if acrte.children[wpid][0] is None and len(acrte.children[wpid]) == 1:
-                if acrte.op_type[wpid] is not None and acrte.op_type[wpid][0] == 'DELIVERY':
+                if acrte.op_type[wpid] is not None and (acrte.op_type[wpid][0] == 'DELIVERY' 
+                                                            or acrte.op_type[wpid][0] == 'STOP'):
                     # Case 1: acrte.children[wpid][0] is None and acrte.op_type[wpid][0] is 'DELIVERY'
                     acrte.children[wpid] = [None, child]
                 else:
@@ -174,7 +178,7 @@ class TDRoute(Route):
 
             return child
         
-        if wptype.upper() == 'RENDEZVOUS':
+        elif wptype == 'RENDEZVOUS':
             if len(wpname.split('/')) == 2:
                 # Check whether coordinates are given. If so, look up wpname
                 wpid_k = acrte.wpname.index(wpname)
@@ -183,16 +187,23 @@ class TDRoute(Route):
 
             if args:
                 if acrte.children[wpid_k][0] is None and len(acrte.children[wpid_k]) == 1:
-                    if acrte.op_type[wpid_k] is not None and acrte.op_type[wpid_k][0] == 'DELIVERY':
-                        # Case 1: acrte.children[wpid_k][0] is None and acrte.op_type[wpid_k][0] is 'DELIVERY'
+                    if acrte.op_type[wpid_k] is not None and (acrte.op_type[wpid_k][0] == 'DELIVERY' 
+                                                            or acrte.op_type[wpid_k][0] == 'STOP'):
+                        # Case 1: acrte.children[wpid_k][0] is None and acrte.op_type[wpid_k][0] is 'DELIVERY' or 'STOP'
                         acrte.children[wpid_k] = [None, args[0]]
                     else:
-                        # Case 2: Only acrte.children[wpid_k][0] is None (and not matching 'DELIVERY')
+                        # Case 2: Only acrte.children[wpid_k][0] is None (and not matching 'DELIVERY' or 'STOP')
                         acrte.children[wpid_k] = [args[0]]
                 else:
                     # Case 3: Only acrte.children[wpid_k][0] is not None
                     acrte.children[wpid_k].extend([args[0]])
 
+        elif wptype == 'DELIVERY' or wptype == 'STOP':
+            if acrte.children[wpid][0] == None and acrte.op_type[wpid] != None and\
+                len(acrte.op_type[wpid]) == 1:
+                acrte.children[wpid] = [None]
+            else:
+                acrte.children[wpid].extend([None])
     @staticmethod
     def deldroneops(truckidx: 'acid', droneid):
         """Delete all drone operations of a specific drone in the route of the 
