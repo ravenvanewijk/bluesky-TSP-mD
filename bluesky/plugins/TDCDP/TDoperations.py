@@ -297,7 +297,7 @@ class Operations(Entity):
             bs.traf.ntraf = len(bs.traf.lat)
             self.data_logger.log_data({'completion_time: ': bs.sim.simt})
             self.data_logger.shutdown()
-            stack.stack('RESET')
+            stack.stack('HOLD')
         else:
             self.trkdelqueue.append(idx)
         return True

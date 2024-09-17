@@ -147,7 +147,7 @@ def select_points_from_lines(geo_series, stored_points, selected_points, N,
 
     return stored_points, N
 
-def find_wp_indices(rte, lr_locs, max_wp, decimal_places=5):
+def find_wp_indices(rte, lr_locs, max_wp, decimal_places=6):
     """
     Find waypoint indices of waypoints included in the truck's route.
 

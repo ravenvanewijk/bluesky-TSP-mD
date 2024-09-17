@@ -194,7 +194,7 @@ class DeliverConquer(Entity):
 
     @stack.command(name='UNCERTAINTY')
     def set_uncertainty(self, setting):
-        self.uncertainty = setting
+        self.uncertainty = setting.strip() == 'True'
 
     @stack.command(name='DRONEUNC')
     def drone_uncertainty(self, *args):
@@ -487,6 +487,7 @@ class DeliverConquer(Entity):
             # Set timeout such that we don't immediately try again
             # timeout in seconds
             self.timeout = 180 / bs.sim.simdt
+            self.resume()
             return
         # The modified time reduces the makespan
         # Therefore we change the plans and serve the next customer by drone
@@ -497,7 +498,7 @@ class DeliverConquer(Entity):
         max_cust, uav_lat, uav_lon, child = self.reroute_truck(truckidx, 
                                                             dcustid, ncustid)
         self.reschedule_existing_drones(truckidx, child)
-
+        self.resume()
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1], uav_lat], 
         #                     [rte.wplon[:truckwpidx + 1], uav_lon],
         #                     f'Route with serving customer {dcustid} by drone non recon',
@@ -1185,6 +1186,7 @@ class DeliverConquer(Entity):
         if self.truckname not in bs.traf.Operations.operational_states:
             stack.stack(f'VNAV {self.truckname} ON')
             stack.stack(f'LNAV {self.truckname} ON')
+            stack.stack(f'SPDAP {self.truckname} 5')
         # uncomment for fast sim
         # debug --> slower so no ff
         stack.stack("FF")
