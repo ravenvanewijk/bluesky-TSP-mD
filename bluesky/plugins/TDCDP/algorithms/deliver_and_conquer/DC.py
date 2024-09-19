@@ -70,7 +70,7 @@ def init_plugin():
     return config
 
 def reset():
-    bs.traf.deliver_and_conquer.reset()
+    bs.traf.deliver_conquer.reset()
 
 class DeliverConquer(Entity):
     def __init__(self):
