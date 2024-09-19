@@ -63,16 +63,29 @@ def init_plugin():
     # Configuration parameters
     config = {
         'plugin_name':     'DC',
-        'plugin_type':     'sim'
+        'plugin_type':     'sim',
+        'reset': reset
     }
     bs.traf.deliver_conquer = DeliverConquer()
     return config
+
+def reset():
+    bs.traf.deliver_and_conquer.reset()
 
 class DeliverConquer(Entity):
     def __init__(self):
         self.called = False
         self.seed = 11 # None for random seed, enter a number to add a seed
         self.uncertainty = False
+
+    def reset(self):
+        self.called = False
+        self.seed = 11 # None for random seed, enter a number to add a seed
+        self.uncertainty = False
+        self.added_route = []
+        self.added_deliveries = []
+        self.trucketa = []
+        self.reconeta = []      
 
     def reset_added_cmds(self):
         self.added_route = []
