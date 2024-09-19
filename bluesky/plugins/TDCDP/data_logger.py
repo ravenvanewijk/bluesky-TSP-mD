@@ -32,7 +32,8 @@ class DataLogger:
             self.logger.removeHandler(self.logger.handlers[0])
 
         # Create a file handler
-        file_handler = logging.FileHandler(log_path)
+        print(log_path)
+        file_handler = logging.FileHandler(log_path, mode='w')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter('%(message)s'))
 
