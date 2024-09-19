@@ -640,7 +640,7 @@ class DeliverConquer(Entity):
         return max_cust_considered, uav_lat, uav_lon, child
 
     def reroute_to_operations(self, truckidx, A, recon):
-
+        rte = bs.traf.ap.route[truckidx]
         # Filter the active drones
         # Should not be set to status == True, since then i (the launch) has 
         # already been passed. It should also have the real truck as its parent
@@ -687,15 +687,22 @@ class DeliverConquer(Entity):
                             else 'k'
             B = (op_drones[drone][f'lat_{op_loc}'], 
                         op_drones[drone][f'lon_{op_loc}'])
-            if np.all(np.isclose(A, B)):
-                if op_loc == 'k':
-                    # SPECIAL CASE: we're rerouting to a drone that is already
-                    # preparing to be picked up.
-                    bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
-                        f"{B[0]}/{B[1]}", 'RENDEZVOUS', self.rendezvous_time,
-                                                                    drone)
-                continue
+
             road_route, spd_lims, etas = roadroute(self.G, A, B)
+            # only if there's no route between the two points we want to 
+            # skip the routing altogether.
+            if road_route == []:
+                if op_loc == 'k':
+                    # SPECIAL CASE: we're rerouting to a drone that is 
+                    # already preparing to be picked up.
+                    if len(rte.wplat) == 0:
+                        # If this wp has not been added yet, add it
+                        bs.traf.ap.route[truckidx].addtdwaypoints(truckidx,
+                                        A[0],A[1],0, 30,'TURNSPD',10)
+                    bs.traf.ap.route[truckidx].addoperationpoints(truckidx, 
+                        f"{A[0]}/{A[1]}", 'RENDEZVOUS', 
+                                        self.rendezvous_time, drone)
+                continue
 
             road_route_merged = linemerge(road_route)
             if all(np.isclose(road_route_merged.coords[-1],
@@ -705,17 +712,20 @@ class DeliverConquer(Entity):
                 # So delete one of these waypoints
                 coords = list(road_route_merged.coords)
                 coords.pop(-2)
-                road_route_merged = LineString(coords)
+                road_route_merged = LineString(coords) if len(coords) != 1 \
+                                    else Point(coords)
                 spd_lims.pop(-2)
 
-            if all(np.isclose(road_route_merged.coords[0],
-                                road_route_merged.coords[1])):
+            if len(road_route_merged.coords) > 1 and \
+                        all(np.isclose(road_route_merged.coords[0],
+                                        road_route_merged.coords[1])):
                 # Annoying error can occur where 3 waypoints overlap
                 # This can result in the truck missing a sortie or rendezvous
                 # So delete one of these waypoints
                 coords = list(road_route_merged.coords)
                 coords.pop(1)
-                road_route_merged = LineString(coords)
+                road_route_merged = LineString(coords) if len(coords) != 1 \
+                                    else Point(coords)
                 spd_lims.pop(1)
                 
             wp_commands = construct_scenario(self.truckname, road_route_merged, 
