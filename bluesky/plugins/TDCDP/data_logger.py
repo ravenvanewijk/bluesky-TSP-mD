@@ -75,6 +75,16 @@ class DataLogger:
 
         self.log_data(log_entry)
 
+    def log_droneop(self, op_type, waiting_entity, waiting_time, op_time):
+        log_entry = {
+            "op_type": op_type,
+            "waiting_entity": waiting_entity,
+            "waiting_time": waiting_time,
+            "op_completion_time": op_time
+        }
+
+        self.log_data(log_entry)
+
     def shutdown(self):
         """Shut down the logging system to ensure all log entries are properly written and closed.∂"""
         logging.shutdown()

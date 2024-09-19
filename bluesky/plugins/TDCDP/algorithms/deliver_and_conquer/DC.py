@@ -254,7 +254,9 @@ class DeliverConquer(Entity):
             else:
                 raise Exception(f"Warning: Index out of bounds (i={i}, j={j})")
 
-        self.model = PACO(1, 10, 0.3, 3, 10, 200, eta, 5, self.seed)
+        self.model = PACO(0.010461764789873224, 5.27869682094635, 
+                        0.4751926593050544, 37, 59, 95, eta,    
+                        7.485872389855088, seed=self.seed)
         self.model.simulate()
 
     def route_basic_tsp(self):
@@ -269,6 +271,14 @@ class DeliverConquer(Entity):
                                             self.customers[v].location)
             road_route_merged = linemerge(road_route)
             # Update customer location with Bluesky location on route
+            if v == 0:
+                dest_tolerance = 0.0016198704103671706
+                reset_cmd_time = len(self.customers) // 5
+                stack.stack(f"SCHEDULE 00:{'{:02}'.format(reset_cmd_time)}:00 "
+                            f"{self.truckname} ATDIST "
+                            f"{self.customers[v].location[0]} "
+                            f"{self.customers[v].location[1]} "
+                            f"{dest_tolerance} TRKDEL TRUCK")
             self.customers[u].location = \
                 np.around([road_route_merged.xy[1][0], 
                             road_route_merged.xy[0][0]], 6)
@@ -295,24 +305,38 @@ class DeliverConquer(Entity):
         stack.stack("TRAIL ON")
         stack.stack("OP")
 
-    def plot_graph(self, lines=[], cust=False):
-        """Plots the graph of the selected gpkg file as well as customer 
-        locations"""
+    def plot_graph(self, lines=[], cust=False, points=None):
+        """Plots the graph of the selected gpkg file, customer locations, 
+        and optionally a single point."""
+        
         # Plot city graph
         fig, ax = ox.plot_graph(self.G, show=False, close=False)
+        
         # Plot the customers
         if cust and self.lr_locs is not None:
-            locs_scatter = ax.scatter([point.x for _, point in 
-                            self.lr_locs.items()],
-                            [point.y for _, point in self.lr_locs.items()],
-                            c='red', s=8, zorder=5, label='L&R locations')
-            # Show the plot with a legend
+            locs_scatter = ax.scatter(
+                [point.x for _, point in self.lr_locs.items()],
+                [point.y for _, point in self.lr_locs.items()],
+                c='red', s=8, zorder=5, label='L&R locations'
+            )
             ax.legend(handles=[locs_scatter])
 
+        # Plot the lines
         for line in lines:
             x, y = line.xy
-            ax.plot(x, y, marker='o')  # Plot the line with markers at vertices
-            ax.plot(x[-1],y[-1],'rs') 
+            label = 'r'
+            ax.plot(x, y, marker='o', label=label)  # Plot the line with markers at vertices
+            ax.plot(x[-1], y[-1], 'rs')  # Mark the last point in the line
+            label = 'b'
+
+        if points is not None:
+            i = 1
+            color='red'
+            for point in points:
+                ax.scatter(point.x, point.y, c=color, s=30, zorder=10, label=f'Point {i}')
+                color='blue'
+                i += 1
+                ax.legend() 
 
         plt.show()
 
@@ -345,7 +369,8 @@ class DeliverConquer(Entity):
                 self.current_route.remove(to_del)
                 self.delivery_cmds.pop(f'{to_del}')
         try:
-            self.current_route.remove(dcustid)
+            if not dcustid == 0:
+                self.current_route.remove(dcustid)
         except ValueError:
             pass
 
@@ -444,6 +469,7 @@ class DeliverConquer(Entity):
             # Set timeout such that we don't immediately try again
             # timeout in seconds
             bs.traf.Operations.recondelete(self.recon_name)
+            self.reconeta = []
             self.timeout = 180 / bs.sim.simdt
             self.resume()
             return
@@ -468,14 +494,59 @@ class DeliverConquer(Entity):
         #                     [rte_recon.wplon[:reconwpidx + 1], uav_lon],
         #                     f'Route with serving customer {dcustid} by drone',
         #                     ['Truck', 'Drone'])
+        # eta_r_route_c = LineString(zip(rte.wplon, rte.wplat))
+        # eta_m_route_c = LineString(zip(rte_recon.wplon, rte_recon.wplat))
+        # eta_r_route = LineString(zip(rte.wplon[rte.iactwp:truckwpidx + 1], rte.wplat[rte.iactwp:truckwpidx +1]))
+        # eta_m_route = LineString(zip(rte_recon.wplon[:reconwpidx + 1], rte_recon.wplat[:reconwpidx +1]))
+        # self.plot_graph([eta_r_route_c, eta_m_route_c], single_point=Point(self.customers[dcustid].location[1],self.customers[dcustid].location[0]))
+        # print(self.model.P[0].tour)
+
+
+        # self.plot_graph([eta_m_route_c], points=[Point(self.customers[dcustid].location[1],self.customers[dcustid].location[0]),
+        #                                             Point(bs.traf.lon[0], bs.traf.lat[0])])
+        # self.plot_graph([eta_r_route, eta_m_route], points=[Point(self.customers[dcustid].location[1],self.customers[dcustid].location[0]),
+        #                                             Point(bs.traf.lon[0], bs.traf.lat[0])])
+        # print(calc_truck_ETA2(self.trucketa[rte.iactwp:truckwpidx + 1], 
+        #                     rte.operation_duration[rte.iactwp:truckwpidx + 1]))
+        # print(calc_truck_ETA2(self.reconeta[:reconwpidx + 1], 
+        #                     rte_recon.operation_duration[:reconwpidx + 1]))
+
+        _,p1 = kwikqdrdist(rte.wplat[rte.iactwp], rte.wplon[rte.iactwp], 
+                            bs.traf.lat[truckidx], bs.traf.lon[truckidx]) 
+        _,p2 = kwikqdrdist(rte.wplat[max(rte.iactwp - 1, 0)], 
+                            rte.wplon[max(rte.iactwp - 1, 0)], 
+                            bs.traf.lat[truckidx], bs.traf.lon[truckidx]) 
+
+        # Calculate the fraction of the way we have advanced to next wp
+        if not (p1 + p2) == 0:
+            interp = p2 / (p1 + p2)
+        else:
+            interp = 0
 
         # Calculate the eta to next customer for both cases
-        eta_r = calc_truck_ETA2(self.trucketa[:truckwpidx + 1], 
-                                rte.operation_duration[:truckwpidx + 1])
+        eta_r = calc_truck_ETA2(self.trucketa[max(rte.iactwp-1,0):truckwpidx + 1], 
+                                rte.operation_duration[rte.iactwp:truckwpidx + 1],
+                                interp)
         eta_m = calc_truck_ETA2(self.reconeta[:reconwpidx + 1], 
                                 rte_recon.operation_duration[:reconwpidx + 1]) 
 
+        # if bs.sim.simt>1200:
+        #     print(eta_r)
+        #     print(eta_m)
+
+        #     print(rte.wplon[rte.iactwp - 1:truckwpidx+1])
+        #     print(rte_recon.wplon[:reconwpidx + 1])
+
+        #     print(self.trucketa[rte.iactwp - 1:truckwpidx + 1])
+        #     print(self.reconeta[:reconwpidx + 1])
+        #     self.plot_graph([eta_r_route], points=[Point(self.customers[dcustid].location[1],self.customers[dcustid].location[0]),
+        #                                                 Point(bs.traf.lon[0], bs.traf.lat[0])])
+
+        #     self.plot_graph([eta_m_route], points=[Point(self.customers[dcustid].location[1],self.customers[dcustid].location[0]),
+        #                                                 Point(bs.traf.lon[0], bs.traf.lat[0])])
+
         bs.traf.Operations.recondelete(self.recon_name)
+        self.reconeta = []
 
         success = 'sufficient savings' if eta_m + penalty < eta_r else \
                     'insufficient savings'
@@ -557,7 +628,7 @@ class DeliverConquer(Entity):
         bs.traf.ap.route[truckidx].addtdwaypoints(truckidx,*newcmds[startidx:])
         if recon:
             self.reconeta.extend(etas[startidx//6:])
-            self.add_recon_routepiece()
+            self.add_recon_routepiece(ncustid)
         else:
             self.remove_commands(dcustid, ncustid)
             self.trucketa.extend(etas[startidx//6:])
@@ -832,21 +903,21 @@ class DeliverConquer(Entity):
                 # Store the delivery such that it will not be added again
                 self.added_deliveries.append(delivery_cmd)
 
-    def add_recon_routepiece(self):
+    def add_recon_routepiece(self, ncustid):
         try:
             truckidx = bs.traf.id.index(self.recon_name)
         except ValueError:
             return
 
-        if len(self.current_route) <= 2:
-            # correction for dronecust not needed for last piece
-            cor = 0
-        else:
-            # Add all routepieces in window, except for dronecust
-            cor = 1
-            
-        for u,v in zip(self.current_route[cor:cor+self.window], 
-            self.current_route[1+cor:1 + cor + self.window]):
+        # if len(self.current_route) <= 2:
+        #     # correction for dronecust not needed for last piece
+        #     cor = 0
+        # else:
+        #     # Add all routepieces in window, except for dronecust
+        #     cor = 1
+        start_idx = self.current_route.index(ncustid)
+        for u,v in zip(self.current_route[start_idx:start_idx+self.window], 
+            self.current_route[1+start_idx:1 + start_idx + self.window]):
             # The drone customer is the first one in line
             # Fetch argument from the string
             args = extract_arguments(self.routing_cmds[f'{u}-{v}'], 
