@@ -293,10 +293,7 @@ class DeliverConquer(Entity):
                 dest_tolerance = 0.0016198704103671706
                 reset_cmd_time = len(self.customers) // 5
                 stack.stack(f"SCHEDULE 00:{'{:02}'.format(reset_cmd_time)}:00 "
-                            f"{self.truckname} ATDIST "
-                            f"{self.customers[v].location[0]} "
-                            f"{self.customers[v].location[1]} "
-                            f"{dest_tolerance} TRKDEL TRUCK")
+                            "TRKDEL TRUCK")
             self.customers[u].location = \
                 np.around([road_route_merged.xy[1][0], 
                             road_route_merged.xy[0][0]], 6)
@@ -1014,8 +1011,8 @@ class DeliverConquer(Entity):
             except NoOptimalSolutionError:
                 return np.inf
             
-            # # we want to check here if we can still change the wp or whether
-            # # the wp is already too close
+            # we want to check here if we can still change the wp or whether
+            # the wp is already too close
             if truck_drones[drone]['status'] != False:
                 droneidx = bs.traf.id.index(drone)
                 dronerte = bs.traf.ap.route[droneidx]

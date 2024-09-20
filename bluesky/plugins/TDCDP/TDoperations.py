@@ -298,7 +298,8 @@ class Operations(Entity):
         id = bs.traf.id.index(idx)
         # Call the actual delete function, iif all operations have been succesfully completed
         if len(self.operational_states) == 0 and\
-            len(self.drone_manager.active_drones) == 0:
+            len(self.drone_manager.active_drones) == 0 and not\
+            bs.traf.swlnav[id]:
             bs.traf.delete(id)
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)
@@ -314,8 +315,8 @@ class Operations(Entity):
         """Checks which trucks are commanded to be deleted, and checks whether this deletion can be performed.
         If so, the truck is deleted"""
         for truck in self.trkdelqueue:
-            if len(self.operational_states) == 0:
-                id = bs.traf.id.index(truck)
+            id = bs.traf.id.index(truck)
+            if len(self.operational_states) == 0 and not bs.traf.swlnav[id]:
                 self.truckdelete(truck)
                 self.trkdelqueue.remove(truck)
         return True
