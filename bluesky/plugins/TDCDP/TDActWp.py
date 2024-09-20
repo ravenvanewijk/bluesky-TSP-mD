@@ -67,7 +67,7 @@ class TDActWp(ActiveWaypoint):
         #swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,np.logical_or(dist < self.turndist,circling)))[0]
         dist_logical = dist < self.turndist
         # # MODIFIED W.R.T. ORIGINAL: TRUCK SHOULD ALWAYS HAVE SUFFICIENT DISTANCE LEFT TO MAKE THE TURN.
-        dist_logical = np.where(np.array(bs.traf.type) == 'TRUCK', False, dist_logical)
+        dist_logical = np.where(np.array(bs.traf.type) == 'Truck', False, dist_logical)
         swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,dist_logical))[0]
         # tooclose2turn
         # array([False])

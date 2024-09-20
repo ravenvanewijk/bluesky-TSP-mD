@@ -284,7 +284,12 @@ class DeliverConquer(Entity):
                                             self.customers[v].location)
             road_route_merged = linemerge(road_route)
             # Update customer location with Bluesky location on route
-            if v == 0:
+            if u == 0:
+                # modify spawn loc
+                truckidx = bs.traf.id.index(self.truckname)
+                bs.traf.lat[truckidx] = road_route_merged.coords[0][1]
+                bs.traf.lon[truckidx] = road_route_merged.coords[0][0]
+
                 dest_tolerance = 0.0016198704103671706
                 reset_cmd_time = len(self.customers) // 5
                 stack.stack(f"SCHEDULE 00:{'{:02}'.format(reset_cmd_time)}:00 "
@@ -954,7 +959,8 @@ class DeliverConquer(Entity):
 
         for delivery_cmd in self.delivery_cmds:
             # Add delivery commands in window
-            if int(delivery_cmd) in self.current_route[1:2 + self.window]:
+            if int(delivery_cmd) in self.current_route[start_idx:1 + 
+                                                    start_idx + self.window]:
                 # Fetch arguments from the string
                 args = extract_arguments(self.delivery_cmds[delivery_cmd],
                                     f'ADDOPERATIONPOINTS {self.truckname},')
@@ -1280,7 +1286,7 @@ class DeliverConquer(Entity):
         if self.truckname not in bs.traf.Operations.operational_states:
             stack.stack(f'VNAV {self.truckname} ON')
             stack.stack(f'LNAV {self.truckname} ON')
-            stack.stack(f'SPDAP {self.truckname} 5')
+
         # uncomment for fast sim
         # debug --> slower so no ff
         stack.stack("FF")
