@@ -18,7 +18,7 @@ class NoOptimalSolutionError(Exception):
 def str_interpret(value):
     return value  # Ensure the value remains a string
 
-def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-5):
+def find_index_with_tolerance(latlon, lat_list, lon_list, tol=1e-6):
     """Find the index of a latitude/longitude pair in lists with tolerance."""
     for idx, (lat, lon) in enumerate(zip(lat_list, lon_list)):
         if abs(latlon[0] - lat) <= tol and abs(latlon[1] - lon) <= tol:

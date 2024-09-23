@@ -820,7 +820,22 @@ class DeliverConquer(Entity):
         next_idx = find_index_with_tolerance(self.customers[ncustid].location,
                                             rte.wplat,
                                             rte.wplon)
-        L_id = list(L).index(next_idx)
+
+        if next_idx in L:
+            L_id = list(L).index(next_idx)
+        elif next_idx + 1 in L and abs(self.customers[ncustid].location[0] - 
+                                        rte.wplat[next_idx + 1]) < 1e-6 and \
+                                    abs(self.customers[ncustid].location[1] - 
+                                        rte.wplon[next_idx + 1]) < 1e-6:
+            L_id = list(L).index(next_idx + 1)
+        elif next_idx - 1 in L and abs(self.customers[ncustid].location[0] - 
+                                        rte.wplat[next_idx - 1]) < 1e-6 and \
+                                    abs(self.customers[ncustid].location[1] - 
+                                        rte.wplon[next_idx - 1]) < 1e-6:
+            L_id = list(L).index(next_idx - 1)
+        else:
+            raise ValueError(f"Customer {ncustid} not found in route")
+
         # Slice such that we can only get up until that idx for launching                                   
         L = L[:L_id + 1]
 

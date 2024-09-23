@@ -97,15 +97,14 @@ class DroneManager(Entity):
         args: type, description
         - drone_name: str, name of the drone to be created"""
         data = self.active_drones[drone_name]
+        droneidx = bs.traf.id.index(drone_name)
         stack.stack(f"ALT {drone_name} {data['alt']}")
-        scen_text = f"ADDTDWAYPOINTS {drone_name} "
         for wp in ['i', 'j', 'k']:
             if data['lon_k'] is None and wp == 'k':
                 # This means coordinates are given but embedded in the wpname
                 data['lat_k'], data['lon_k'] = data['wpname_k'].split('/')
-            scen_text += f"{data['lat_' + wp]} {data['lon_' + wp]} {data['alt']} {data['spd']} TURNSPD 3 "
-
-        stack.stack(scen_text)
+            bs.traf.ap.route[droneidx].addtdwaypoints(droneidx, data['lat_' + wp], 
+                        data['lon_' + wp], data['alt'], data['spd'], 'TURNSPD', 3)
 
         drone_id = bs.traf.id.index(drone_name)
         stack.stack(f'ATALT {drone_name} {data["alt"]} LNAV {drone_name} ON')
