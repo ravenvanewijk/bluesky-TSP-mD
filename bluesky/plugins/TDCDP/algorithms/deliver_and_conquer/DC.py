@@ -309,7 +309,7 @@ class DeliverConquer(Entity):
             op_text = (f"ADDOPERATIONPOINTS {self.truckname},"
                 f"{self.customers[v].location[0]}/"
                 f"{self.customers[v].location[1]},DELIVERY, "
-                f"{(self.truck_delivery_time + self.customers[v].del_unc)}")
+                f"{(self.truck_delivery_time + self.customers[v].del_unc)}, {v}")
             self.added_deliveries.append(str(v))
             delivery_cmds.append(op_text)
             self.delivery_cmds[f'{v}'] = op_text
@@ -871,7 +871,7 @@ class DeliverConquer(Entity):
             f'{rte.wplat[mp.pickup_location]}/{rte.wplon[mp.pickup_location]}',
             self.cruise_alt / ft, cruise_spd,
             self.delivery_time + self.customers[dcustid].del_unc,
-            self.rendezvous_time)
+            self.rendezvous_time, dcustid)
 
         uav_lat = [rte.wplat[mp.launch_location], 
                 self.customers[dcustid].location[0], 
@@ -1108,7 +1108,7 @@ class DeliverConquer(Entity):
                         f"/{truck_drones[drone]['lon_k']}", 
                     self.cruise_alt / ft, dronespd,
                     self.delivery_time + self.customers[cust_id].del_unc, 
-                    self.rendezvous_time
+                    self.rendezvous_time, cust_id
                 )
 
                 if not recon:

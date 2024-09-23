@@ -49,7 +49,7 @@ class DataLogger:
         json_data = json.dumps(data)
         self.logger.info(json_data)
 
-    def log_customer_service(self, data, acid, idx, cust_count, op_time):
+    def log_customer_service(self, data, acid, idx, cust_count, op_time, custid):
         """Log a customer service entry to the log file.
 
         args: type, description:
@@ -57,6 +57,7 @@ class DataLogger:
             - acid: str, the identifier for the vehicle (e.g., 'TRUCK')
             - idx: int, the index of the operation to be logged
             - cust_count: int, the customer ID being served
+            - cust_id: the given customer ID to keep track of individual custs
         """
         t_0 = data['t0'][idx]
         op_duration = data['op_duration'][idx]
@@ -67,7 +68,9 @@ class DataLogger:
             t = t_0 + op_duration
         
         log_entry = {
-            "customer_id": cust_count,
+            "type": 'Delivery',
+            "customer_count": cust_count,
+            "cust_id": custid,
             "served_time": t,
             "vehicle": acid,
             "coordinates": coords,
@@ -78,6 +81,7 @@ class DataLogger:
 
     def log_droneop(self, op_type, waiting_entity, waiting_time, op_time):
         log_entry = {
+            "type": "Rendezvous",
             "op_type": op_type,
             "waiting_entity": waiting_entity,
             "waiting_time": waiting_time,

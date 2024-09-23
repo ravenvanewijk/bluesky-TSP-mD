@@ -29,6 +29,7 @@ class TDRoute(Route):
         self.children = []
         self.op_type = []
         self.op_t0 = []
+        self.custid = []
 
     @stack.command
     @staticmethod
@@ -47,6 +48,7 @@ class TDRoute(Route):
         acrte.children.extend(wpcount * [[None]])
         acrte.op_type.extend(wpcount * [None])
         acrte.op_t0.extend(wpcount * [None])
+        acrte.custid.extend(wpcount * [None])
 
         if acrte.iactwp < 0:
             # Direct towards first waypoint
@@ -84,8 +86,13 @@ class TDRoute(Route):
         wptype = wptype.upper()
         wptype = wptype.strip()
         wpname = wpname.upper()
-        if len(args) !=0 and (wptype == 'DELIVERY' or wptype == 'STOP'):
+        if (len(args) !=1 and len(args) != 0) and wptype == 'DELIVERY':
             bs.scr.echo('Invalid number of operational values, argument number must be 0 for delivery\
+                type modification.')
+            return
+
+        if len(args) !=0 and wptype == 'STOP':
+            bs.scr.echo('Invalid number of operational values, argument number must be 0 for stop\
                 type modification.')
             return
 
@@ -94,7 +101,7 @@ class TDRoute(Route):
                 type modification. If 1: child_name')
             return
 
-        elif len(args) !=9 and wptype == 'SORTIE':
+        elif (len(args) !=9 and len(args) !=10) and wptype == 'SORTIE':
             bs.scr.echo('Invalid number of operational values, argument number must be 9 for sortie type modification.\
                         Order: type, UAVnumber, lat_j, lon_j, wpname_k, alt, spd, servicetime, recoverytime')
             return
@@ -148,13 +155,15 @@ class TDRoute(Route):
             wpid_k = acrte.wpname.index(wpname_k.upper())
             # truck, type, UAVnumber, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k,
             # wpname_k, alt, spd, servicetime, retrievaltime
+            custid = args[9] if len(args) == 10 else 999
+            
             child = bs.traf.Operations.drone_manager.add_drone(vehicleid, 
                                         args[0], args[1], acrte.wplat[wpid], 
                                         acrte.wplon[wpid],args[2], args[3], 
                                         acrte.wplat[wpid_k], 
                                         acrte.wplon[wpid_k], 
                                         wpname_k, args[5], args[6], 
-                                        args[7], args[8])
+                                        args[7], args[8], custid)
             
             bs.traf.ap.route[vehicleidx].addoperationpoints(vehicleidx, 
                                 wpname_k, 'RENDEZVOUS', args[8], child)
@@ -204,6 +213,11 @@ class TDRoute(Route):
                 acrte.children[wpid] = [None]
             else:
                 acrte.children[wpid].extend([None])
+
+        if wptype == 'DELIVERY':
+            custid = int(args[0]) if args else 999
+            acrte.custid[wpid] = custid
+
     @staticmethod
     def deldroneops(truckidx: 'acid', droneid):
         """Delete all drone operations of a specific drone in the route of the 

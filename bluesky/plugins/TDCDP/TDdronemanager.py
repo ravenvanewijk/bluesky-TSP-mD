@@ -16,7 +16,7 @@ class DroneManager(Entity):
         self.completed_ops = {}
 
     def add_drone(self, truck, type, UAVnumber, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k, wpname_k, alt, spd, 
-                    service_t, recovery_t):
+                    service_t, recovery_t, custid):
         """Adds a drone to the dictionary of available drones. Available drones is used to keep track of drones in the
         memory of the simulation. Keeps track of (intermediate) destination, spd, alt, service/ recovery time etc.
         args: type, description
@@ -41,7 +41,7 @@ class DroneManager(Entity):
             'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
             'lon_k': lon_k, 'wpname_k': wpname_k, 'alt': alt, 'spd': spd,
             'service_time': service_t, 'recovery_time': recovery_t,
-            'del_done': False
+            'del_done': False, 'custid': custid
             }
         return available_name
 
@@ -112,7 +112,8 @@ class DroneManager(Entity):
         stack.stack(f"ATALT {drone_name} {data['alt']} SPDAP {drone_name} {data['spd']}")
         
         # Add operation for the delivery
-        stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_j']}/{data['lon_j']} DELIVERY {data['service_time']}")
+        stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_j']}/{data['lon_j']} "
+                    f"DELIVERY {data['service_time']} {data['custid']}")
         # Add operation for the rendezvous
         recovery_t = data['recovery_time']
         stack.stack(f"ADDOPERATIONPOINTS {drone_name} {data['lat_k']}/{data['lon_k']} RENDEZVOUS {recovery_t}")

@@ -12,7 +12,7 @@ from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDdronemanager import DroneManager, get_wpname
 from bluesky.plugins.TDCDP.data_logger import DataLogger
 
-delivery_dist = 0.00025 * 2
+delivery_dist = 0.00025 * 4
 
 def init_plugin():
     # Configuration parameters
@@ -92,6 +92,7 @@ class Operations(Entity):
         bs.traf.swvnavspd[acidx] = False
         stack.stack(f'{acid} ALT 0')
         op_type = acrte.op_type[iactwp]
+        cust = acrte.custid[iactwp]
         # Track operational status, useful to discover if all operations have finished
         op_status = len(op_type) * [False]
         t0 = acrte.op_t0[iactwp]
@@ -109,7 +110,8 @@ class Operations(Entity):
                                 'children': children, # Child drones of operations that are taking place
                                 't0': t0, # Start time of operation. Keeps track of all operations individually
                                 't_a': np.inf, # Arrival time at the operation point, ready to operate
-                                'busy': False # Non vectorized variable. Keeps track if an operation is in progress
+                                'busy': False, # Non vectorized variable. Keeps track if an operation is in progress
+                                'custid': cust
                                 }
         # Special (rare) case:
         # When Rendezvous wp == Sortie wp, sortie is completed before adding
@@ -181,7 +183,8 @@ class Operations(Entity):
                                                 acid,
                                                 idx,
                                                 self.custs_served + 1,
-                                                bs.sim.simt - self.operational_states[acid]['t0'][idx]
+                                                bs.sim.simt - self.operational_states[acid]['t0'][idx],
+                                                self.operational_states[acid]['custid']
                                                             )
                         # Increment customers served by 1
                         self.custs_served += 1
@@ -303,7 +306,7 @@ class Operations(Entity):
             bs.traf.delete(id)
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)
-            self.data_logger.log_data({'completion_time: ': bs.sim.simt})
+            self.data_logger.log_data({'type': 'Completion', 'completion_time: ': bs.sim.simt})
             self.data_logger.shutdown()
             stack.stack('HOLD')
         else:
