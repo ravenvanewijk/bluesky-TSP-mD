@@ -1006,7 +1006,8 @@ class DeliverConquer(Entity):
             if drone == child or bs.traf.Operations.operational_states.get \
                             (drone, {}).get('op_type') == ['RENDEZVOUS'] \
                             or drone in bs.traf.Operations.operational_states \
-                            .get(self.truckname, {}).get('children', []):
+                            .get(self.truckname, {}).get('children', []) \
+                            or truck_drones[drone]['routed_ts'] == bs.sim.simt:
                 continue
 
             # Remove old operations of that drone first. This has only not been

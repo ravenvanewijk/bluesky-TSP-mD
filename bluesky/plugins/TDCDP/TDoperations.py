@@ -259,6 +259,8 @@ class Operations(Entity):
         # Sortie means an AC is to be spawned and routed from the waypoint.
         self.drone_manager.spawn_drone(self.operational_states[acid]['children'][idx])
         self.drone_manager.route_drone(self.operational_states[acid]['children'][idx])
+        self.drone_manager.active_drones[self.operational_states[acid]['children'][idx]] \
+                                        ['routed_ts'] = bs.sim.simt
         self.mark_done(acid, idx)
 
     def perform_rendezvous(self, acid, idx):

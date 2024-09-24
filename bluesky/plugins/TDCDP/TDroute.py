@@ -195,17 +195,20 @@ class TDRoute(Route):
                 wpid_k = acrte.wpname.index(wpname.upper())
 
             if args:
-                if acrte.children[wpid_k][0] is None and len(acrte.children[wpid_k]) == 1:
-                    if acrte.op_type[wpid_k] is not None and (acrte.op_type[wpid_k][0] == 'DELIVERY' 
-                                                            or acrte.op_type[wpid_k][0] == 'STOP'):
-                        # Case 1: acrte.children[wpid_k][0] is None and acrte.op_type[wpid_k][0] is 'DELIVERY' or 'STOP'
-                        acrte.children[wpid_k] = [None, args[0]]
-                    else:
-                        # Case 2: Only acrte.children[wpid_k][0] is None (and not matching 'DELIVERY' or 'STOP')
-                        acrte.children[wpid_k] = [args[0]]
+                child = args[0]
+            else:
+                child = None
+            if acrte.children[wpid_k][0] is None and len(acrte.children[wpid_k]) == 1:
+                if acrte.op_type[wpid_k] is not None and (acrte.op_type[wpid_k][0] == 'DELIVERY' 
+                                                        or acrte.op_type[wpid_k][0] == 'STOP'):
+                    # Case 1: acrte.children[wpid_k][0] is None and acrte.op_type[wpid_k][0] is 'DELIVERY' or 'STOP'
+                    acrte.children[wpid_k] = [None, child]
                 else:
-                    # Case 3: Only acrte.children[wpid_k][0] is not None
-                    acrte.children[wpid_k].extend([args[0]])
+                    # Case 2: Only acrte.children[wpid_k][0] is None (and not matching 'DELIVERY' or 'STOP')
+                    acrte.children[wpid_k] = [child]
+            else:
+                # Case 3: Only acrte.children[wpid_k][0] is not None
+                acrte.children[wpid_k].extend([child])
 
         elif wptype == 'DELIVERY' or wptype == 'STOP':
             if acrte.children[wpid][0] == None and acrte.op_type[wpid] != None and\
@@ -217,6 +220,11 @@ class TDRoute(Route):
         if wptype == 'DELIVERY':
             custid = int(args[0]) if args else 999
             acrte.custid[wpid] = custid
+
+        if len(acrte.children[wpid]) != len(acrte.op_type[wpid]):
+            print("ERRORRR")
+            raise Exception("Something has gone wrong, asymmetric waypoint info was generated: "
+                            f"{acrte.children[wpid]}, {acrte.op_type[wpid]}")
 
     @staticmethod
     def deldroneops(truckidx: 'acid', droneid):

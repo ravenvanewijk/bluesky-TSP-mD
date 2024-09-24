@@ -41,7 +41,7 @@ class DroneManager(Entity):
             'lon_i': lon_i, 'lat_j': lat_j, 'lon_j': lon_j, 'lat_k': lat_k,
             'lon_k': lon_k, 'wpname_k': wpname_k, 'alt': alt, 'spd': spd,
             'service_time': service_t, 'recovery_time': recovery_t,
-            'del_done': False, 'custid': custid
+            'del_done': False, 'custid': custid, 'routed_ts': False
             }
         return available_name
 
