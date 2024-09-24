@@ -1,6 +1,6 @@
 from bluesky.traffic import ActiveWaypoint
 from bluesky.tools.misc import degto180
-from bluesky.tools.aero import g0
+from bluesky.tools.aero import g0, nm
 from bluesky.traffic import Route
 from bluesky.plugins.TDCDP.TDoperations import delivery_dist
 import numpy as np
@@ -50,6 +50,9 @@ class TDActWp(ActiveWaypoint):
         # flying away and within 4 sec distance based on ground speed (4 sec = sensitivity tuning parameter)
 
         close2wp = dist/(np.maximum(0.0001,np.abs(bs.traf.gs)))<4.0 # Waypoint is within 4 seconds flight time
+        # Replace values for truck, should be in range of delivery at least 
+        # This ensures that all operations are triggered
+        close2wp = np.where((np.array(bs.traf.type) == 'TRUCK') & (dist > delivery_dist * nm), False, close2wp)
         tooclose2turn = close2wp*(np.abs(degto180(bs.traf.trk % 360. - qdr % 360.)) > 90.)
 
         # When too close to waypoint or we have passed the active waypoint, based on leg direction,switch active waypoint
@@ -67,7 +70,7 @@ class TDActWp(ActiveWaypoint):
         #swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,np.logical_or(dist < self.turndist,circling)))[0]
         dist_logical = dist < self.turndist
         # # MODIFIED W.R.T. ORIGINAL: TRUCK SHOULD ALWAYS HAVE SUFFICIENT DISTANCE LEFT TO MAKE THE TURN.
-        dist_logical = np.where(np.array(bs.traf.type) == 'Truck', False, dist_logical)
+        dist_logical = np.where(np.array(bs.traf.type) == 'TRUCK', False, dist_logical)
         swreached = np.where(bs.traf.swlnav * np.logical_or(awayorpassed,dist_logical))[0]
         # tooclose2turn
         # array([False])
