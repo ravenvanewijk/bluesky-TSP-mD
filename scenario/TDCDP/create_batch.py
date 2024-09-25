@@ -2,12 +2,15 @@ import os
 
 folders = [x for x in os.listdir('scenario/TDCDP') if '.py' not in x \
                                                     and '.scn' not in x\
-                                                    and '.DS' not in x]
+                                                    and '.DS' not in x
+                                                    and '.DS_Store' not in x]
 
 batchscn = open("scenario/TDCDP/batchtdcdp.scn", "w")
 
 for folder in folders:
-    files = os.listdir(f'scenario/TDCDP/{folder}')
+    files = [x for x in os.listdir(f'scenario/TDCDP/{folder}') if '.py' not in x \
+                                                    and '.DS' not in x
+                                                    and '.DS_Store' not in x]
     for file in files:    
         if 'Seattle' in file:
             continue
