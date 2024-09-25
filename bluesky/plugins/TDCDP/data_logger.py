@@ -17,6 +17,7 @@ class DataLogger:
         self.logger = logging.getLogger('DataLogger')
         self.logger.setLevel(logging.INFO)
         self._configure_logger()
+        self.log_path = os.path.join(self.log_dir, self.log_filename)
 
     def _configure_logger(self):
         """Configure the logger settings, create log directory if it does not exist, and set up file handler."""
@@ -25,15 +26,15 @@ class DataLogger:
             os.makedirs(self.log_dir)
 
         # Set the full log path
-        log_path = os.path.join(self.log_dir, self.log_filename)
+        self.log_path = os.path.join(self.log_dir, self.log_filename)
         
         # Remove existing handlers
         while self.logger.hasHandlers():
             self.logger.removeHandler(self.logger.handlers[0])
 
         # Create a file handler
-        print(log_path)
-        file_handler = logging.FileHandler(log_path, mode='w')
+        print(self.log_path)
+        file_handler = logging.FileHandler(self.log_path, mode='w')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter('%(message)s'))
 
