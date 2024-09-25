@@ -150,7 +150,7 @@ class TDRoute(Route):
                 lat_k = args[4].split('/')[0]
                 lon_k = args[4].split('/')[1]
             else:
-                wpname_k = args[3]
+                wpname_k = args[4]
 
             wpid_k = acrte.wpname.index(wpname_k.upper())
             # truck, type, UAVnumber, lat_i, lon_i, lat_j, lon_j, lat_k, lon_k,
@@ -164,9 +164,6 @@ class TDRoute(Route):
                                         acrte.wplon[wpid_k], 
                                         wpname_k, args[5], args[6], 
                                         args[7], args[8], custid)
-            
-            bs.traf.ap.route[vehicleidx].addoperationpoints(vehicleidx, 
-                                wpname_k, 'RENDEZVOUS', args[8], child)
 
             # if acrte.children[wpid][0] is None:
             #     acrte.children[wpid] = [child]
@@ -185,6 +182,9 @@ class TDRoute(Route):
                 # Case 3: Only acrte.children[wpid][0] is not None
                 acrte.children[wpid].extend([child])
 
+            bs.traf.ap.route[vehicleidx].addoperationpoints(vehicleidx, 
+                                wpname_k, 'RENDEZVOUS', args[8], child)
+                                
             return child
         
         elif wptype == 'RENDEZVOUS':
@@ -222,7 +222,6 @@ class TDRoute(Route):
             acrte.custid[wpid] = custid
 
         if len(acrte.children[wpid]) != len(acrte.op_type[wpid]):
-            print("ERRORRR")
             raise Exception("Something has gone wrong, asymmetric waypoint info was generated: "
                             f"{acrte.children[wpid]}, {acrte.op_type[wpid]}")
 

@@ -1105,8 +1105,7 @@ class DeliverConquer(Entity):
                     'SORTIE', self.sortie_time, f'M{self.vehicle_group}', 
                     get_drone_id(drone), truck_drones[drone]['lat_j'],
                     truck_drones[drone]['lon_j'],
-                    f"{truck_drones[drone]['lat_k']}" +
-                        f"/{truck_drones[drone]['lon_k']}", 
+                    f"{lat_k}/{lon_k}", 
                     self.cruise_alt / ft, dronespd,
                     self.delivery_time + self.customers[cust_id].del_unc, 
                     self.rendezvous_time, cust_id
