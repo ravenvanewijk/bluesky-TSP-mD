@@ -1028,7 +1028,10 @@ class DeliverConquer(Entity):
                                         truckidx, rte, drone
                                                 )
             except NoOptimalSolutionError:
-                return np.inf
+                # If there is no optimal solution, we just want to return the 
+                # previous wp, since there is nothing we can change here
+                wpid_k = old_k
+                penalty_i = 0
             
             # we want to check here if we can still change the wp or whether
             # the wp is already too close

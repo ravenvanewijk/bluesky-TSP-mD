@@ -458,12 +458,16 @@ class Traffic(Entity):
         self.hdg = np.where(self.swhdgsel, 
                             self.hdg + bs.sim.simdt * turnrate * np.sign(delhdg), self.aporasas.hdg) % 360.0
 
-        if delhdg[0] > 150 and self.type[0] == "Truck":
+        # if abs(delhdg[0]) > 150 and self.type[0] == "Truck":
+        #     self.hdg[0] = self.aporasas.hdg[0]
+        #     self.tas[0] = 2.5
+
+        if abs(delhdg[0]) > 10 and self.type[0] == "Truck":
             self.hdg[0] = self.aporasas.hdg[0]
-            self.tas[0] = 2.5
-            self.cas = vtas2cas(self.tas, self.alt)
-
-
+            if abs(delhdg[0]) > 90:
+                self.tas[0] = 2.5
+        
+        self.cas = vtas2cas(self.tas, self.alt)
         # Update vertical speed (alt select, capture and hold autopilot mode)
         delta_alt = self.aporasas.alt - self.alt
         # Old dead band version:
