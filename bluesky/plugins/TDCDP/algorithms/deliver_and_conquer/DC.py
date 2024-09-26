@@ -148,8 +148,6 @@ class DeliverConquer(Entity):
         self.window = int(self.M) + 2
 
         # PuLP model parameters
-        self.alpha = 15
-        self.beta = 10
         self.bigM = 10000
 
         self.calc_basic_tsp(problem_name)
@@ -844,8 +842,7 @@ class DeliverConquer(Entity):
 
         # Call the linear programming module to solve the problem
         # This gives us an optimal launch and retrieval location
-        mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.alpha, 
-                                            self.beta, self.bigM, self.R)
+        mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.bigM, self.R)
         mp.create_model()
         mp.set_printoptions(False)
         mp.solve()
@@ -1233,14 +1230,19 @@ class DeliverConquer(Entity):
             t_jk = {}
             T_i[wpid_i] = 0
             for wp in P:
-                
-                _, dist_jk = kwikqdrdist(loc_A[0], loc_A[1],
+                wphdg, dist_jk = kwikqdrdist(loc_A[0], loc_A[1],
                     rte.wplat[wp],
                     rte.wplon[wp])
-                drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
-                        self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
-                        bs.traf.tas[droneidx], bs.traf.vs[droneidx])
-                t_jk[wp] = drone_t_jk 
+                # Arbitrary but works: set time to waypoint as a high value 
+                # in case we can turn to that wp anymore. This ensures the wp 
+                # is not selected and the drone will make the turn.
+                if abs(bs.traf.hdg[droneidx] - wphdg) > 60 and dist_jk < 0.055:
+                    drone_t_jk = 1e10
+                else:
+                    drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
+                            self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
+                            bs.traf.tas[droneidx], bs.traf.vs[droneidx])
+                t_jk[wp] = drone_t_jk
 
         else:
             # Drone has either not been spawned yet or is on its way to 
@@ -1284,8 +1286,8 @@ class DeliverConquer(Entity):
                 
             t_ij = {L[0]: drone_t_ij}
 
-        re_mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.alpha, 
-                                    self.beta, self.bigM, self.R)
+        re_mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.bigM, 
+                                                                self.R)
         re_mp.create_model()
         re_mp.set_printoptions(False)
         re_mp.solve()

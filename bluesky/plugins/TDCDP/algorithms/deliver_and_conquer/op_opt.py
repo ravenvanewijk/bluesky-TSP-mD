@@ -3,8 +3,7 @@ from bluesky.tools.aero import nm
 
 class LR_PuLP:
 
-    def __init__(self, L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, alpha, beta, M,
-                                                                    R=10**9):
+    def __init__(self, L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, M, R=10**9):
         """
         Initialize PuLP model to solve the model to find optimal launch and 
         retrieval location. 
@@ -23,9 +22,7 @@ class LR_PuLP:
             potential retrieval location k
             - T_ik: dictionary, lookup values of truck travel time from 
             potential launch location i to potential retrieval location k
-            - alpha: float, relative importance of excess waiting time
-            - beta: float, maximum allowed waiting time of truck or drone
-            - B: float, drone range in km
+            - R: float, drone range in km
         """
         self.L = L
         self.P = P
@@ -36,8 +33,6 @@ class LR_PuLP:
         self.T_k = T_k
         self.T_ik = T_ik
         self.R = R
-        self.alpha = alpha
-        self.beta = beta
         self.M = M
         self.verbose = True
     
@@ -74,11 +69,6 @@ class LR_PuLP:
         self.model += pulp.lpSum(self.y[k] for k in self.P) == 1, \
                                                             "pickup_location"
 
-        # # Battery constraint for the drone
-        # self.model += pulp.lpSum((self.t_ij[i] + self.t_jk[k]) * self.z[i][k]
-        #                          for i in self.L for k in self.P) <= self.B, \
-        #                                                             "battery"
-
         # Linking constraints
         for i in self.L:
             for k in self.P:
@@ -99,11 +89,6 @@ class LR_PuLP:
                     self.t_jk[k]) - self.T_k[k]) * self.z[i][k], \
                     f"abs_waiting_truck_{i}_{k}"
 
-        # # Waiting time soft constraint
-        # for i in self.L:
-        #     for k in self.P:
-        #         self.model += self.w[i][k] - self.alpha <= self.w_p[i][k]
-        # Constraint on the range of the drone
         for i in self.L:
             for k in self.P:
                 self.model += self.d_j[i] * self.x[i] + self.d_j[k] * \
