@@ -269,6 +269,7 @@ class DeliverConquer(Entity):
                         0.4751926593050544, 37, 59, 95, eta,    
                         7.485872389855088, seed=self.seed)
         self.model.simulate()
+        print(self.model.P[0].tour)
 
     def route_basic_tsp(self):
         """
