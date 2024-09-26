@@ -269,7 +269,6 @@ class DeliverConquer(Entity):
                         0.4751926593050544, 37, 59, 95, eta,    
                         7.485872389855088, seed=self.seed)
         self.model.simulate()
-        print(self.model.P[0].tour)
 
     def route_basic_tsp(self):
         """
@@ -450,6 +449,10 @@ class DeliverConquer(Entity):
         dcust_latlon = self.customers[dcustid].location
         ncust_latlon = self.customers[ncustid].location
         try:
+            print(f"The location of customer {dcustid} is {dcust_latlon}\n" +
+                f"The wplat in route is {wplats[32]} {wplons[32]}\n"+ \
+                f"bs.sim.simt: {bs.sim.simt}\n"+ \
+                f"position of truck: {bs.traf.lat[0]} {bs.traf.lon[0]}") 
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
