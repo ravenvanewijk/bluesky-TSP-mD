@@ -387,7 +387,7 @@ class DeliverConquer(Entity):
         except ValueError:
             pass
 
-    @timed_function(dt=bs.sim.simdt)
+    @timed_function(dt=20*bs.sim.simdt)
     def calc_savings(self):
         """Calculates the potential savings of serving next customer by drone
         If time can be saved, a drone will be launched. Else, nothing is done
@@ -449,10 +449,6 @@ class DeliverConquer(Entity):
         dcust_latlon = self.customers[dcustid].location
         ncust_latlon = self.customers[ncustid].location
         try:
-            print(f"The location of customer {dcustid} is {dcust_latlon}\n" +
-                f"The wplat in route is {wplats[32]} {wplons[32]}\n"+ \
-                f"bs.sim.simt: {bs.sim.simt}\n"+ \
-                f"position of truck: {bs.traf.lat[0]} {bs.traf.lon[0]}") 
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
@@ -487,7 +483,7 @@ class DeliverConquer(Entity):
             # timeout in seconds
             bs.traf.Operations.recondelete(self.recon_name)
             self.reconeta = []
-            self.timeout = 180 / bs.sim.simdt
+            self.timeout = 180/ 20 / 3 / bs.sim.simdt
             self.resume()
             return
 
@@ -574,7 +570,7 @@ class DeliverConquer(Entity):
             # Therefore we dont change plans
             # Set timeout such that we don't immediately try again
             # timeout in seconds
-            self.timeout = 180 / bs.sim.simdt
+            self.timeout = 180 / 20 / 3 / bs.sim.simdt
             self.resume()
             return
         # The modified time reduces the makespan
