@@ -43,7 +43,7 @@ pytz==2024.1
 PyYAML==6.0.2
 pyzmq==26.0.3
 requests==2.32.3
-roadroute-lib @ git+https://github.com/ravenvanewijk/roadroute-lib@845e429243c97e7253d3e4337f5a222419b35a10
+roadroute-lib @ git+https://github.com/ravenvanewijk/roadroute-lib@d2770b7ee89935e5149257ac6014797d0750926b
 Rtree==1.3.0
 scipy==1.14.0
 setuptools==69.5.1
