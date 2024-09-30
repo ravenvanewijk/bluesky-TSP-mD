@@ -118,7 +118,11 @@ class TDRoute(Route):
             wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
         
         elif wpname == 'CURLOC':
-            wpname = acrte.wpname[acrte.iactwp + 1]
+            if len(acrte.wplat) > acrte.iactwp + 1: 
+                wpname = acrte.wpname[acrte.iactwp + 1]
+            else:
+                # Can no longer add anything
+                return
 
         wpid = acrte.wpname.index(wpname)
         # Modify TURNSPD to 2 for all delivery waypoints
