@@ -523,7 +523,7 @@ class DeliverConquer(Entity):
             truckwpidx = find_index_with_tolerance(
                         self.customers[max_cust].location, rte.wplat, rte.wplon)
         except:
-            print(bs.traf.Operations.data_logger.log_path)
+            raise Exception(bs.traf.Operations.data_logger.log_path)
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1]], 
         #                     [rte.wplon[:truckwpidx + 1]],
         #                     f'Route with serving customer {dcustid} by truck',
