@@ -35,6 +35,20 @@ class LR_PuLP:
         self.R = R
         self.M = M
         self.verbose = True
+
+    def reset(self):
+        self.L = np.array([])
+        self.P = np.array([])
+        self.t_ij = {}
+        self.t_jk = {}
+        self.d_j = {}
+        self.T_i = {}
+        self.T_k = {}
+        self.T_ik = {}
+        self.R = np.nan
+        self.M = np.nan
+        self.verbose = True
+
     
     def set_printoptions(self, setting: bool):
         self.verbose = setting

@@ -80,12 +80,39 @@ class DeliverConquer(Entity):
 
     def reset(self):
         self.called = False
-        self.seed = 11 # None for random seed, enter a number to add a seed
+        self.seed = 11 
         self.uncertainty = False
         self.added_route = []
         self.added_deliveries = []
         self.trucketa = []
-        self.reconeta = []      
+        self.reconeta = []
+        self.current_route = []
+        self.custlocs = []
+        self.customers = []
+        self.delivery_cmds = {}
+        self.lr_locs = pd.Series()
+        self.routing_cmds = {}
+        self.routing_etas = {}
+        if hasattr(self, 'model'):
+            self.model.reset()
+        self.vspd_down = np.nan
+        self.vspd_up = np.nan
+        self.window = np.nan
+        self.vehicle_group = None
+        self.truckname = None
+        self.recon_name = None
+        self.timeout = np.nan
+        self.drone_spd_factors = []
+        self.bigM = np.nan
+        self.M = None
+        self.G = None
+        self.rendezvous_time = np.nan
+        self.sortie_time = np.nan
+        self.truck_delivery_time = np.nan
+        self.delivery_time = np.nan
+        self.cruise_alt = np.nan
+        self.cruise_spd = np.nan
+        self.R = np.nan
 
     def reset_added_cmds(self):
         self.added_route = []
@@ -606,6 +633,7 @@ class DeliverConquer(Entity):
         if not recon:
              # Delete old truck route
             bs.traf.ap.route[truckidx].delrte(truckidx)
+            bs.traf.swlnav[truckidx] = True
             self.reset_added_cmds()
         
         # Current position is position A
@@ -1236,7 +1264,9 @@ class DeliverConquer(Entity):
                 # Arbitrary but works: set time to waypoint as a high value 
                 # in case we can turn to that wp anymore. This ensures the wp 
                 # is not selected and the drone will make the turn.
-                if abs(bs.traf.hdg[droneidx] - wphdg) > 60 and dist_jk < 0.055:
+                if abs(bs.traf.hdg[droneidx] - wphdg) > 60 and dist_jk < 0.055\
+                    or abs(bs.traf.hdg[droneidx] - wphdg) > 90 and \
+                                                            dist_jk < 0.2:
                     drone_t_jk = 1e10
                 else:
                     drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
@@ -1304,8 +1334,10 @@ class DeliverConquer(Entity):
     def resume(self):
         """Method to resume the simulation"""
         if self.truckname not in bs.traf.Operations.operational_states:
-            stack.stack(f'VNAV {self.truckname} ON')
             stack.stack(f'LNAV {self.truckname} ON')
+            truckidx = bs.traf.id.index(self.truckname)
+            bs.traf.swlnav[truckidx] = True
+            stack.stack(f'VNAV {self.truckname} ON')
 
         # uncomment for fast sim
         # debug --> slower so no ff

@@ -50,7 +50,7 @@ setuptools==69.5.1
 shapely==2.0.4
 six==1.16.0
 SQLAlchemy==2.0.35
-taxicab_st @ git+https://github.com/ravenvanewijk/taxicab-st.git@5dd220b18107ee15aa817ab24ada2ce26280690a
+taxicab_st @ git+https://github.com/ravenvanewijk/taxicab-st.git@00508b4db4468f96a11fa12abf31d40f0821fbf1
 tqdm==4.66.5
 typing_extensions==4.12.2
 tzdata==2024.1
