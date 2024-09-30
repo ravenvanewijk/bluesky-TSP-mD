@@ -80,9 +80,10 @@ class DataLogger:
 
         self.log_data(log_entry)
 
-    def log_droneop(self, op_type, waiting_entity, waiting_time, op_time):
+    def log_droneop(self, op_type, child, waiting_entity, waiting_time, op_time):
         log_entry = {
-            "type": "Rendezvous",
+            "type": "drone_operation",
+            "child": child,
             "op_type": op_type,
             "waiting_entity": waiting_entity,
             "waiting_time": waiting_time,

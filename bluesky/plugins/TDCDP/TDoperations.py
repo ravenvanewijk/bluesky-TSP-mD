@@ -207,6 +207,8 @@ class Operations(Entity):
                     if start_timer_check and drone_avail:
                         self.start_timer(acid, idx)
                     elif op_timer_check:
+                        child = self.operational_states[acid]['children'][idx]
+                        self.data_logger.log_droneop('SORTIE', child, None, 0, bs.sim.simt)
                         self.perform_sortie(acid, idx)
 
                 elif operation == 'RENDEZVOUS':
@@ -222,10 +224,13 @@ class Operations(Entity):
                         elif op_timer_check:
                             child = self.operational_states[acid]['children'][idx]
                             entity = 'UAV' if self.operational_states[child]['t_a'] < \
-                                self.operational_states[acid]['t_a'] else 'TRUCK'
+                                self.operational_states[acid]['t_a'] + \
+                                sum(self.operational_states[acid]['op_duration'][:idx]) \
+                                    else 'TRUCK'
                             waiting_time = abs(self.operational_states[child]['t_a']-
-                                                self.operational_states[acid]['t_a']) 
-                            self.data_logger.log_droneop('RENDEZVOUS', entity,
+                                                (self.operational_states[acid]['t_a']+ \
+                                sum(self.operational_states[acid]['op_duration'][:idx]))) 
+                            self.data_logger.log_droneop('RENDEZVOUS', child, entity,
                                                         waiting_time, bs.sim.simt)
                             self.perform_rendezvous(acid, idx)
                         else:
