@@ -1,7 +1,7 @@
 import os
 
 city = 'Buffalo'
-uncertainty = 'orig'
+uncertainty = 'ALL'
 
 folders = [x for x in os.listdir('scenario/TDCDP') if '.py' not in x \
                                                     and '.scn' not in x\
