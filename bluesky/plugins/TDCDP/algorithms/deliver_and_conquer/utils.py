@@ -292,7 +292,7 @@ def plot_route(G, lats, lons, title=None, labels=None, point_lat=None,
     if point_lat is not None and point_lon is not None:
         ax.plot(point_lon, point_lat, 'ro', markersize=8, label=point_label or 
                                                                     'Point')
-    
+
     plt.legend()
     plt.title(title)
     plt.show()

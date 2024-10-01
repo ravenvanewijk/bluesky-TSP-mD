@@ -46,7 +46,8 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     raw_data,
     calc_truck_ETA2,
     calc_drone_ETA,
-    in_range
+    in_range,
+    turn_feasible
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import PACO
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.op_opt import (
@@ -526,15 +527,18 @@ class DeliverConquer(Entity):
             raise Exception(bs.traf.Operations.data_logger.log_path)
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1]], 
         #                     [rte.wplon[:truckwpidx + 1]],
-        #                     f'Route with serving customer {dcustid} by truck',
+        #                     f'Route with serving next customer by truck',
         #                     ['Truck'],
         #                     dcust_latlon[0],
         #                     dcust_latlon[1],
         #                     f'Customer {dcustid}')
         # plot_route(self.G, [rte_recon.wplat[:reconwpidx + 1], uav_lat], 
         #                     [rte_recon.wplon[:reconwpidx + 1], uav_lon],
-        #                     f'Route with serving customer {dcustid} by drone',
-        #                     ['Truck', 'Drone'])
+        #                     f'Route with serving next customer by drone',
+        #                     ['Truck', 'Drone'],
+        #                     dcust_latlon[0],
+        #                     dcust_latlon[1],
+        #                     f'Customer {dcustid}')
         # eta_r_route_c = LineString(zip(rte.wplon, rte.wplat))
         # eta_m_route_c = LineString(zip(rte_recon.wplon, rte_recon.wplat))
         # eta_r_route = LineString(zip(rte.wplon[rte.iactwp:truckwpidx + 1], rte.wplat[rte.iactwp:truckwpidx +1]))
@@ -1265,9 +1269,8 @@ class DeliverConquer(Entity):
                 # Arbitrary but works: set time to waypoint as a high value 
                 # in case we can turn to that wp anymore. This ensures the wp 
                 # is not selected and the drone will make the turn.
-                if abs(bs.traf.hdg[droneidx] - wphdg) > 60 and dist_jk < 0.055\
-                    or abs(bs.traf.hdg[droneidx] - wphdg) > 90 and \
-                                                            dist_jk < 0.2:
+                if not turn_feasible(abs(bs.traf.hdg[droneidx] - wphdg), 
+                                                                    dist_jk):
                     drone_t_jk = 1e10
                 else:
                     drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 

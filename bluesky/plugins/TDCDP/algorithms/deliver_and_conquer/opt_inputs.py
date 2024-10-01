@@ -321,3 +321,9 @@ def in_range(dist, R, distflown):
     R: float, range of the drone in km
     distflown: float, distance flown by the drone in m"""
     return True if dist * nm + distflown <= R * 1000 else False
+
+def turn_feasible(hdg, dist):
+    if dist < 0.1 + (hdg - 60) * 0.005:
+        return False
+    
+    return True
