@@ -1,0 +1,46 @@
+{"type": "drone_operation", "child": "T_UAV1_1", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 1, "cust_id": 3, "served_time": 211.7, "vehicle": "T_UAV1_1", "coordinates": [42.91125299999999, -78.830135], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 2, "cust_id": 15, "served_time": 297.15, "vehicle": "TRUCK", "coordinates": [42.920661000896075, -78.83542993238251], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_1", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 23.700000000000045, "op_completion_time": 327.15, "distflown": 3227.7497938934885}
+{"type": "Delivery", "customer_count": 3, "cust_id": 21, "served_time": 518.75, "vehicle": "TRUCK", "coordinates": [42.912867000592826, -78.84366334095775], "op_time": 30.0}
+{"type": "Delivery", "customer_count": 4, "cust_id": 6, "served_time": 694.5, "vehicle": "TRUCK", "coordinates": [42.89742900000863, -78.85093699119375], "op_time": 30.0}
+{"type": "Delivery", "customer_count": 5, "cust_id": 10, "served_time": 836.6, "vehicle": "TRUCK", "coordinates": [42.88934305713383, -78.85739686084715], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_2", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 6, "cust_id": 24, "served_time": 1032.5, "vehicle": "T_UAV1_2", "coordinates": [42.896106, -78.840042], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 7, "cust_id": 19, "served_time": 1135.3, "vehicle": "TRUCK", "coordinates": [42.8833821088092, -78.83260164095852], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_2", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 28.049999999999955, "op_completion_time": 1165.3, "distflown": 3141.4882590712587}
+{"type": "drone_operation", "child": "T_UAV1_3", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 8, "cust_id": 9, "served_time": 1431.0, "vehicle": "T_UAV1_3", "coordinates": [42.86816400000001, -78.790916], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 9, "cust_id": 17, "served_time": 1462.9, "vehicle": "TRUCK", "coordinates": [42.87658848747452, -78.8529909128249], "op_time": 30.0}
+{"type": "Delivery", "customer_count": 10, "cust_id": 20, "served_time": 1633.3, "vehicle": "TRUCK", "coordinates": [42.881557240075495, -78.86898995646533], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_3", "op_type": "RENDEZVOUS", "waiting_entity": "TRUCK", "waiting_time": 31.65000000000009, "op_completion_time": 1695.0, "distflown": 10330.99508861732}
+{"type": "drone_operation", "child": "T_UAV1_4", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 11, "cust_id": 2, "served_time": 2241.7, "vehicle": "T_UAV1_4", "coordinates": [42.99483599999999, -78.861889], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 12, "cust_id": 23, "served_time": 2452.4, "vehicle": "TRUCK", "coordinates": [42.980723663933446, -78.89527501886415], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_4", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 84.94999999999982, "op_completion_time": 2482.4, "distflown": 15746.651083908091}
+{"type": "drone_operation", "child": "T_UAV1_5", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 13, "cust_id": 25, "served_time": 2653.9, "vehicle": "T_UAV1_5", "coordinates": [42.987109000000004, -78.88969], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 14, "cust_id": 22, "served_time": 2684.95, "vehicle": "TRUCK", "coordinates": [42.97887500401171, -78.88147053509958], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_5", "op_type": "RENDEZVOUS", "waiting_entity": "TRUCK", "waiting_time": 30.90000000000009, "op_completion_time": 2745.9, "distflown": 1977.741734742299}
+{"type": "drone_operation", "child": "T_UAV1_6", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 15, "cust_id": 7, "served_time": 3054.25, "vehicle": "T_UAV1_6", "coordinates": [42.93301500000001, -78.874741], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 16, "cust_id": 14, "served_time": 3190.85, "vehicle": "TRUCK", "coordinates": [42.995566813544514, -78.84326796925144], "op_time": 30.0}
+{"type": "Delivery", "customer_count": 17, "cust_id": 4, "served_time": 3369.5, "vehicle": "TRUCK", "coordinates": [43.00134205263126, -78.83033000012824], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_6", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 21.09999999999991, "op_completion_time": 3399.5, "distflown": 13541.492575544591}
+{"type": "drone_operation", "child": "T_UAV1_7", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 18, "cust_id": 8, "served_time": 3662.55, "vehicle": "T_UAV1_7", "coordinates": [42.96792500000001, -78.829885], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 19, "cust_id": 12, "served_time": 3765.5, "vehicle": "TRUCK", "coordinates": [42.980684396109154, -78.80143199849452], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_7", "op_type": "RENDEZVOUS", "waiting_entity": "TRUCK", "waiting_time": 9.5, "op_completion_time": 3805.05, "distflown": 6431.973714653734}
+{"type": "drone_operation", "child": "T_UAV1_8", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 20, "cust_id": 16, "served_time": 4011.4, "vehicle": "T_UAV1_8", "coordinates": [42.989304000000004, -78.822112], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 21, "cust_id": 13, "served_time": 4325.35, "vehicle": "TRUCK", "coordinates": [42.98068900004779, -78.71378803168191], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_8", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 5.699999999999818, "op_completion_time": 4355.35, "distflown": 10801.512551283748}
+{"type": "drone_operation", "child": "T_UAV1_9", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 22, "cust_id": 5, "served_time": 4682.55, "vehicle": "T_UAV1_9", "coordinates": [42.93064699999999, -78.730211], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 23, "cust_id": 18, "served_time": 5065.3, "vehicle": "TRUCK", "coordinates": [42.93119700983152, -78.7623212210523], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_9", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 273.4499999999998, "op_completion_time": 5095.3, "distflown": 8337.569438453873}
+{"type": "drone_operation", "child": "T_UAV1_10", "op_type": "SORTIE"}
+{"type": "Delivery", "customer_count": 24, "cust_id": 1, "served_time": 5332.5, "vehicle": "T_UAV1_10", "coordinates": [42.912552000000005, -78.787218], "op_time": 60.0}
+{"type": "Delivery", "customer_count": 25, "cust_id": 11, "served_time": 5495.6, "vehicle": "TRUCK", "coordinates": [42.93183544511089, -78.8021014731775], "op_time": 30.0}
+{"type": "drone_operation", "child": "T_UAV1_10", "op_type": "RENDEZVOUS", "waiting_entity": "UAV", "waiting_time": 215.89999999999964, "op_completion_time": 5664.8, "distflown": 4796.141336115829}
+{"type": "Completion", "completion_time: ": 5664.8}

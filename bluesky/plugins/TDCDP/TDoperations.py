@@ -94,7 +94,7 @@ class Operations(Entity):
         op_type = acrte.op_type[iactwp]
         cust = acrte.custid[iactwp]
         # Track operational status, useful to discover if all operations have finished
-        op_status = len(op_type) * [False]
+        op_status = acrte.op_status[iactwp]
         t0 = acrte.op_t0[iactwp]
         op_duration = acrte.operation_duration[iactwp]
         # get children at this node to add to the operational states
@@ -208,7 +208,7 @@ class Operations(Entity):
                         self.start_timer(acid, idx)
                     elif op_timer_check:
                         child = self.operational_states[acid]['children'][idx]
-                        self.data_logger.log_droneop('SORTIE', child, None, 0, bs.sim.simt)
+                        self.data_logger.log_droneop('SORTIE', child, bs.sim.simt)
                         self.perform_sortie(acid, idx)
 
                 elif operation == 'RENDEZVOUS':
@@ -230,8 +230,9 @@ class Operations(Entity):
                             waiting_time = abs(self.operational_states[child]['t_a']-
                                                 (self.operational_states[acid]['t_a']+ \
                                 sum(self.operational_states[acid]['op_duration'][:idx]))) 
-                            self.data_logger.log_droneop('RENDEZVOUS', child, entity,
-                                                        waiting_time, bs.sim.simt)
+                            childid = bs.traf.id.index(child)
+                            self.data_logger.log_droneop('RENDEZVOUS', child, bs.sim.simt,
+                                                entity, waiting_time, bs.traf.distflown[childid])
                             self.perform_rendezvous(acid, idx)
                         else:
                             continue

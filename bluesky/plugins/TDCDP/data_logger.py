@@ -16,8 +16,8 @@ class DataLogger:
         self.log_dir = log_dir
         self.logger = logging.getLogger('DataLogger')
         self.logger.setLevel(logging.INFO)
-        self._configure_logger()
         self.log_path = os.path.join(self.log_dir, self.log_filename)
+        self._configure_logger()
 
     def _configure_logger(self):
         """Configure the logger settings, create log directory if it does not exist, and set up file handler."""
@@ -33,7 +33,6 @@ class DataLogger:
             self.logger.removeHandler(self.logger.handlers[0])
 
         # Create a file handler
-        print(self.log_path)
         file_handler = logging.FileHandler(self.log_path, mode='w')
         file_handler.setLevel(logging.INFO)
         file_handler.setFormatter(logging.Formatter('%(message)s'))
@@ -80,15 +79,29 @@ class DataLogger:
 
         self.log_data(log_entry)
 
-    def log_droneop(self, op_type, child, waiting_entity, waiting_time, op_time):
-        log_entry = {
-            "type": "drone_operation",
-            "child": child,
-            "op_type": op_type,
-            "waiting_entity": waiting_entity,
-            "waiting_time": waiting_time,
-            "op_completion_time": op_time
-        }
+    def log_droneop(self, op_type, child, op_time, waiting_entity=None,
+                                            waiting_time=None, distflown=None):
+        op_type = op_type.upper()
+        
+        if op_type not in ['RENDEZVOUS', 'SORTIE']:
+            return
+        
+        if op_type == 'RENDEZVOUS':
+            log_entry = {
+                "type": "drone_operation",
+                "child": child,
+                "op_type": op_type,
+                "waiting_entity": waiting_entity,
+                "waiting_time": waiting_time,
+                "op_completion_time": op_time,
+                "distflown": distflown
+            }
+        elif op_type == 'SORTIE':
+            log_entry = {
+                "type": "drone_operation",
+                "child": child,
+                "op_type": op_type
+            }
 
         self.log_data(log_entry)
 

@@ -46,7 +46,7 @@ from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.opt_inputs import (
     raw_data,
     calc_truck_ETA2,
     calc_drone_ETA,
-    in_range,
+    update_range,
     turn_feasible
 )
 from bluesky.plugins.TDCDP.algorithms.deliver_and_conquer.PACO import PACO
@@ -691,7 +691,8 @@ class DeliverConquer(Entity):
         # Should not be set to status == True, since then i (the launch) has 
         # already been passed. It should also have the real truck as its parent
         # We also want to add drones that are performing their rendezvous,
-        # since we do not want to reroute these
+        # since we do not want to reroute these (last part also includes 
+        # turning drone at their last wp, do not reroute these either)
         # Also, the operation should not appear in the active operations of the
         # We also do not want to consider it in that case, because it is being
         # served right now (don't want to add it again)
@@ -713,6 +714,15 @@ class DeliverConquer(Entity):
                         and not drone_id in bs.traf.Operations.
                         operational_states.get(self.truckname, {}).
                                                             get('children', [])
+                        )
+                    # Case 3
+                    # drone is in turning wp which is its last wp. Reroute to 
+                    # this drone, cannot be rerouted
+                    or (bs.traf.ap.inturn[bs.traf.id.index(drone_id)] \
+                        and bs.traf.ap.route[bs.traf.id.index(drone_id)].\
+                                                            iactwp + 1 ==\
+                        len(bs.traf.ap.route[bs.traf.id.index(drone_id)].\
+                                                                wplat) 
                         )
                     )
                 )
@@ -868,7 +878,10 @@ class DeliverConquer(Entity):
                                         rte.wplon[next_idx - 1]) < 1e-6:
             L_id = list(L).index(next_idx - 1)
         else:
-            raise ValueError(f"Customer {ncustid} not found in route")
+            # Add the point manually, did not get spotted by the wp indices 
+            # selector probably because of a very rare routing deviation
+            L = np.append(L, next_idx)
+            L.sort()
 
         # Slice such that we can only get up until that idx for launching                                   
         L = L[:L_id + 1]
@@ -1036,6 +1049,7 @@ class DeliverConquer(Entity):
             # to leave it to do its thing
             # or if the truck is already at that wp of the operation, also just 
             # leave it to do its thing
+            # or if the drone has been routed this timestep
             if drone == child or bs.traf.Operations.operational_states.get \
                             (drone, {}).get('op_type') == ['RENDEZVOUS'] \
                             or drone in bs.traf.Operations.operational_states \
@@ -1044,10 +1058,13 @@ class DeliverConquer(Entity):
                 continue
 
             # Remove old operations of that drone first. This has only not been
-            # done yet if the function call is a timed call.
+            # done yet if the function call is a timed call (or recon).
             # In other cases, the route is entire refreshed so this removal is 
             # not strictly necessary but can be performed anyway
-            old_k = bs.traf.ap.route[truckidx].deldroneops(truckidx, drone)
+            if not recon:
+                old_k = bs.traf.ap.route[truckidx].deldroneops(truckidx, drone)
+            else:
+                old_k = None
             # Find new optimum of retrieval local that we can achieve on the 
             # truck route, along with the penalty that we get from this 
             # rerouting w.r.t the originally planned route
@@ -1061,6 +1078,11 @@ class DeliverConquer(Entity):
                 # If there is no optimal solution, we just want to return the 
                 # previous wp, since there is nothing we can change here
                 wpid_k = old_k
+                if wpid_k == None:
+                    # Cannot reschedule to anything, return large number such
+                    # that we do not perform the routing (recon)
+                    penalty += 10e10
+                    continue
                 penalty_i = 0
             
             # we want to check here if we can still change the wp or whether
@@ -1069,11 +1091,21 @@ class DeliverConquer(Entity):
                 droneidx = bs.traf.id.index(drone)
                 dronerte = bs.traf.ap.route[droneidx]
                 if bs.traf.ap.inturn[droneidx] and \
-                    dronerte.iactwp + 1 == len(dronerte.wplat) and old_k:
+                    dronerte.iactwp + 1 == len(dronerte.wplat):
                     # We cant change the wpid_k anymore, too close
                     # so just select the wp we had before
-                    wpid_k = old_k
-                    penalty_i = 0
+                    if not old_k:
+                        try:
+                            find_index_with_tolerance((truck_drones[drone]
+                                        ['lat_k'], truck_drones[drone]['lon_k']), 
+                                        rte.wplat, rte.wplon)
+                        except ValueError:
+                            # recon cannot reroute, return large number
+                            penalty += 10e10
+                            continue
+                    else:
+                        wpid_k = old_k
+                        penalty_i = 0
                 else:
                     # Not too close to change, keep regular calculation
                     pass
@@ -1243,6 +1275,10 @@ class DeliverConquer(Entity):
                         self.vspd_up, self.vspd_down,
                         self.delivery_time, self.truck_delivery_time, 
                         interp, rte.iactwp)
+        # set range to be the range of the drone now, can be updated later
+        # if the drone has not been spawned, then this value will remain to be
+        # the default value for the range (which is self.R, full battery)
+        R = self.R 
 
         loc_A = (active_drones[drone]['lat_i'], active_drones[drone]\
             ['lon_i']) if not active_drones[drone]['status'] \
@@ -1284,7 +1320,8 @@ class DeliverConquer(Entity):
             if active_drones[drone]['status'] != False:
                 # logic for otw to wp j
                 # we need to add the drone speed to the calculations
-                droneidx = bs.traf.id.index(drone) 
+                droneidx = bs.traf.id.index(drone)
+                R = update_range(self.R, bs.traf.distflown[droneidx]) 
                 tas = bs.traf.tas[droneidx]
                 vs = bs.traf.vs[droneidx]
                 T_i[wpid_i] = 0
@@ -1320,8 +1357,7 @@ class DeliverConquer(Entity):
                 
             t_ij = {L[0]: drone_t_ij}
 
-        re_mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.bigM, 
-                                                                self.R)
+        re_mp = LR_PuLP(L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik, self.bigM, R)
         re_mp.create_model()
         re_mp.set_printoptions(False)
         re_mp.solve()

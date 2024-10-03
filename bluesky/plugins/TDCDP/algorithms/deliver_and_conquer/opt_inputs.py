@@ -209,7 +209,7 @@ def calc_drone_ETA(dist, hspd, vspd_up, vspd_down, alt, a, hspd0=0, vspd0=0,
         alt_to_descend = alt0
         alt_to_climb = 0
     elif vspd0 > 0:
-        alt_to_climb = alt - alt0
+        alt_to_climb = max(0, alt - alt0)
         alt_to_descend = alt
     elif np.isclose(0, dist, atol=1e-2) and alt0 == 0:
         # we're at the customer
@@ -312,18 +312,18 @@ def calc_truck_ETA2(eta, op_duration, interp=0):
     return sum(time_per_wp)
      
 
-def in_range(dist, R, distflown):
-    """Calculates whether the target location is in range of the drone
+def update_range(R, distflown):
+    """Updates the range of the drone
     
     Arguments: type, description
     
     dist: float, distance to the target location in nm
     R: float, range of the drone in km
     distflown: float, distance flown by the drone in m"""
-    return True if dist * nm + distflown <= R * 1000 else False
+    return R - distflown / 1000
 
 def turn_feasible(hdg, dist):
-    if dist < 0.1 + (hdg - 60) * 0.005:
+    if dist < 0.15 + (hdg - 60) * 0.005:
         return False
     
     return True

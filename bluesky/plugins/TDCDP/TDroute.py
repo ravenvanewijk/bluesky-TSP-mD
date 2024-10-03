@@ -29,6 +29,7 @@ class TDRoute(Route):
         self.children = []
         self.op_type = []
         self.op_t0 = []
+        self.op_status = []
         self.custid = []
 
     @stack.command
@@ -48,6 +49,7 @@ class TDRoute(Route):
         acrte.children.extend(wpcount * [[None]])
         acrte.op_type.extend(wpcount * [None])
         acrte.op_t0.extend(wpcount * [None])
+        acrte.op_status.extend(wpcount * [None])
         acrte.custid.extend(wpcount * [None])
 
         if acrte.iactwp < 0:
@@ -74,6 +76,7 @@ class TDRoute(Route):
         del acrte.children[wpidx]
         del acrte.op_type[wpidx]
         del acrte.op_t0[wpidx]
+        del acrte.op_status[wpidx]
 
         # Call regular command
         Route.delwpt(acidx, wpname)
@@ -115,6 +118,7 @@ class TDRoute(Route):
         if len(wpname.split('/')) == 2:
             # Check whether coordinates are given. If so, look up wpname
             prefer_later = True if wptype=='RENDEZVOUS' else False
+            wpcoords = wpname
             wpname = get_wpname(wpname, acrte, prefer_later=prefer_later)
         
         elif wpname == 'CURLOC':
@@ -146,6 +150,11 @@ class TDRoute(Route):
             acrte.op_t0[wpid] = [np.inf]
         else:
             acrte.op_t0[wpid].extend([np.inf])
+
+        if acrte.op_status[wpid] is None:
+            acrte.op_status[wpid] = [False]
+        else:
+            acrte.op_status[wpid].extend([False])
 
         if wptype == 'SORTIE':
             if len(args[4].split('/')) == 2:
@@ -253,6 +262,7 @@ class TDRoute(Route):
                 rte.children[droneop_wp] = [None]
                 rte.op_type[droneop_wp] = None
                 rte.op_t0[droneop_wp] = None
+                rte.op_status[droneop_wp] = None
 
                 lat_prev = rte.wplat[max(droneop_wp - 1, 0)]
                 lon_prev = rte.wplon[max(droneop_wp - 1, 0)]
@@ -290,6 +300,7 @@ class TDRoute(Route):
                         del rte.children[droneop_wp][i]
                         del rte.op_type[droneop_wp][i]
                         del rte.op_t0[droneop_wp][i]
+                        del rte.op_status[droneop_wp][i]
                     else:
                         i += 1
                 # If all children are deleted, set rte.children back to [None]
