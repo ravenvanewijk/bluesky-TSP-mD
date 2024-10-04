@@ -18,6 +18,7 @@ class DataLogger:
         self.logger.setLevel(logging.INFO)
         self.log_path = os.path.join(self.log_dir, self.log_filename)
         self._configure_logger()
+        self.prev_scen = None
 
     def _configure_logger(self):
         """Configure the logger settings, create log directory if it does not exist, and set up file handler."""
@@ -125,6 +126,7 @@ class DataLogger:
             - new_log_dir: str, optional, the new directory where the log file will be stored
         """
         # Update filename and/or path if provided
+        self.prev_scen = self.log_path
         if new_filename:
             # Define a regular expression pattern to match the 
             # filename and capture the drone config, solve method, and uncertainty

@@ -524,7 +524,9 @@ class DeliverConquer(Entity):
             truckwpidx = find_index_with_tolerance(
                         self.customers[max_cust].location, rte.wplat, rte.wplon)
         except:
-            raise Exception(bs.traf.Operations.data_logger.log_path)
+            raise Exception(bs.traf.Operations.data_logger.log_path +
+                            f'\n The time of simulation is {bs.sim.simt} \n' +
+                            f'Previous log file: {bs.traf.Operations.data_logger.prev_scen}')
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1]], 
         #                     [rte.wplon[:truckwpidx + 1]],
         #                     f'Route with serving next customer by truck',
@@ -882,6 +884,7 @@ class DeliverConquer(Entity):
             # selector probably because of a very rare routing deviation
             L = np.append(L, next_idx)
             L.sort()
+            L_id = list(L).index(next_idx)
 
         # Slice such that we can only get up until that idx for launching                                   
         L = L[:L_id + 1]
