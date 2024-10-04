@@ -661,6 +661,8 @@ class DeliverConquer(Entity):
             wp_commands = construct_scenario(self.truckname, road_route_merged, 
                                                                         spd_lims)
         except:
+            for line in road_route_merged.geoms:
+                print(list(line.xy))
             raise Exception('Constructing wp commands failed.' +\
                 f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
                 f'\nThe time of simulation is {bs.sim.simt}' +
@@ -772,6 +774,8 @@ class DeliverConquer(Entity):
 
             road_route_merged = linemerge(road_route)
             if type(road_route_merged) != LineString:
+                for line in road_route_merged.geoms:
+                    print(list(line.xy))
                 raise Exception('Resulting route is not connected properly.' +\
                     f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
                     f'\nThe time of simulation is {bs.sim.simt}' +
