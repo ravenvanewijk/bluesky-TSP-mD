@@ -764,8 +764,10 @@ class DeliverConquer(Entity):
 
             road_route_merged = linemerge(road_route)
             if type(road_route_merged) != LineString:
-                raise Exception("Resulting route is not connected properly." +\
-                    f"\nLog file: {bs.traf.Operations.data_logger.log_path}")
+                raise Exception('Resulting route is not connected properly.' +\
+                    f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
+                    f'\nThe time of simulation is {bs.sim.simt}' +
+                    f'\nPrevious log file: {bs.traf.Operations.data_logger.prev_scen}')
             if all(np.isclose(road_route_merged.coords[-1],
                                 road_route_merged.coords[-2])):
                 # Annoying error can occur where 3 waypoints overlap
