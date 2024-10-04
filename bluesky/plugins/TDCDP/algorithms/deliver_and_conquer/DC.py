@@ -526,7 +526,8 @@ class DeliverConquer(Entity):
         except:
             raise Exception(bs.traf.Operations.data_logger.log_path +
                             f'\n The time of simulation is {bs.sim.simt} \n' +
-                            f'Previous log file: {bs.traf.Operations.data_logger.prev_scen}')
+                            f'Previous log file: {bs.traf.Operations.data_logger.prev_scen}' +
+                            f'\n The TSP tour is {self.model.P[0].tour}')
         # plot_route(self.G, [rte.wplat[:truckwpidx + 1]], 
         #                     [rte.wplon[:truckwpidx + 1]],
         #                     f'Route with serving next customer by truck',
@@ -656,9 +657,16 @@ class DeliverConquer(Entity):
                             self.customers[ncustid].location)
 
         road_route_merged = linemerge(road_route)
-        wp_commands = construct_scenario(self.truckname, road_route_merged, 
-                                                                    spd_lims)
-
+        try:
+            wp_commands = construct_scenario(self.truckname, road_route_merged, 
+                                                                        spd_lims)
+        except:
+            raise Exception('Constructing wp commands failed.' +\
+                f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
+                f'\nThe time of simulation is {bs.sim.simt}' +
+                f'\nPrevious log file: {bs.traf.Operations.data_logger.prev_scen}' +
+                f'\nThe TSP tour is {self.model.P[0].tour}' +
+                f'\nThe A and B locations are {(A, B)}')
         # self.plot_graph(road_route, True)
         newcmds = extract_arguments(wp_commands, 
                                     f'ADDTDWAYPOINTS {self.truckname},')
@@ -767,7 +775,9 @@ class DeliverConquer(Entity):
                 raise Exception('Resulting route is not connected properly.' +\
                     f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
                     f'\nThe time of simulation is {bs.sim.simt}' +
-                    f'\nPrevious log file: {bs.traf.Operations.data_logger.prev_scen}')
+                    f'\nPrevious log file: {bs.traf.Operations.data_logger.prev_scen}' +
+                    f'\nThe TSP tour is {self.model.P[0].tour}' +
+                    f'\nThe A and B locations are {(A, B)}')
             if all(np.isclose(road_route_merged.coords[-1],
                                 road_route_merged.coords[-2])):
                 # Annoying error can occur where 3 waypoints overlap
