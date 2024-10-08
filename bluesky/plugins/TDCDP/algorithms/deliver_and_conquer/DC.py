@@ -657,21 +657,26 @@ class DeliverConquer(Entity):
                             self.customers[ncustid].location)
 
         road_route_merged = linemerge(road_route)
-        try:
-            wp_commands = construct_scenario(self.truckname, road_route_merged, 
-                                                                        spd_lims)
-        except:
-            for line in road_route_merged.geoms:
-                print(list(line.xy))
-            raise Exception('Constructing wp commands failed.' +\
-                f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
-                f'\nThe time of simulation is {bs.sim.simt}' +
-                f'\nPrevious log file: {bs.traf.Operations.data_logger.prev_scen}' +
-                f'\nThe TSP tour is {self.model.P[0].tour}' +
-                f'\nThe A and B locations are {(A, B)}')
-        # self.plot_graph(road_route, True)
-        newcmds = extract_arguments(wp_commands, 
-                                    f'ADDTDWAYPOINTS {self.truckname},')
+        if not road_route_merged.is_empty:
+            try:
+                wp_commands = construct_scenario(self.truckname, 
+                                                road_route_merged, spd_lims)
+            except:
+                for line in road_route_merged.geoms:
+                    print(list(line.xy))
+                raise Exception('Constructing wp commands failed.' +\
+                    f'\nLog file: {bs.traf.Operations.data_logger.log_path}' +
+                    f'\nThe time of simulation is {bs.sim.simt}' +
+                    f'\nPrevious log file: ' + 
+                    f'{bs.traf.Operations.data_logger.prev_scen}' +
+                    f'\nThe TSP tour is {self.model.P[0].tour}' +
+                    f'\nThe A and B locations are {(A, B)}')
+            # self.plot_graph(road_route, True)
+            newcmds = extract_arguments(wp_commands, 
+                                        f'ADDTDWAYPOINTS {self.truckname},')
+        else: 
+            # There is no route so also empty cmds list
+            newcmds = []
         try:
             rte = bs.traf.ap.route[truckidx]
             last_lat = rte.wplat[-1]
@@ -898,8 +903,16 @@ class DeliverConquer(Entity):
         else:
             # Add the point manually, did not get spotted by the wp indices 
             # selector probably because of a very rare routing deviation
-            L = np.append(L, next_idx)
-            L.sort()
+            wp_indices = np.append(wp_indices, next_idx)
+            wp_indices.sort()
+            L, P, t_ij, t_jk, d_j, T_i, T_k, T_ik = calc_inputs(
+                        truckidx, rte, eta, rte.operation_duration, 
+                        wp_indices, 
+                        self.customers[dcustid].location[0],
+                        self.customers[dcustid].location[1],
+                        self.cruise_alt, self.cruise_spd, 
+                        self.vspd_up, self.vspd_down,
+                        self.delivery_time, self.truck_delivery_time)
             L_id = list(L).index(next_idx)
 
         # Slice such that we can only get up until that idx for launching                                   
