@@ -322,8 +322,9 @@ def update_range(R, distflown):
     distflown: float, distance flown by the drone in m"""
     return R - distflown / 1000
 
-def turn_feasible(hdg, dist):
-    if dist < 0.15 + (hdg - 60) * 0.005:
+def turn_feasible(hdg, dist, spd_factor):
+    if dist / spd_factor < 0.15 + (hdg - 60) * 0.005:
         return False
-    
+    if dist / spd_factor < 0.08 and dist < 0.05 + (hdg - 30) * 0.005:
+        return False
     return True

@@ -219,7 +219,9 @@ class TDAutoPilot(Autopilot):
         # qdr[deg],distinnm[nm]
         qdr, distinnm = geo.qdrdist(bs.traf.lat, bs.traf.lon,
                                     bs.traf.actwp.lat, bs.traf.actwp.lon)  # [deg][nm])
-
+        distinnm = np.where((bs.traf.lat == bs.traf.actwp.lat) & 
+                        (bs.traf.lon == bs.traf.actwp.lon), 
+                        0, distinnm)
         self.qdr2wp  = qdr
         self.dist2wp = distinnm*nm  # Conversion to meters
 

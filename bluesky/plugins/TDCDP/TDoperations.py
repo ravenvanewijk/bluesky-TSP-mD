@@ -35,6 +35,7 @@ class Operations(Entity):
         self.trkdelqueue = []
         self.data_logger = DataLogger()
         self.custs_served = 0
+        self.custs_served_list = []
         self.trk_op_time = 0
     
     def reset(self):
@@ -43,6 +44,7 @@ class Operations(Entity):
         self.trkdelqueue = []
         self.data_logger.shutdown()
         self.custs_served = 0
+        self.custs_served_list = []
         self.trk_op_time = 0
     
     @stack.command(name='LOG')
@@ -61,23 +63,32 @@ class Operations(Entity):
                 iactwp = 0
             # check whether or not the attribute exists. Will not exist if regular addwaypoints is called
             if hasattr(acrte, 'operation_wp') and iactwp > -1:
+                prevwp = max(0, iactwp - 1)
+                prev2wp = max(0, iactwp - 2)
                 _, actdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], 
                                     acrte.wplat[iactwp], acrte.wplon[iactwp])
-                prevwp = max(0, iactwp - 1)
                 _, prevdist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], 
                                     acrte.wplat[prevwp], acrte.wplon[prevwp])
+                _, prev2dist = qdrdist(bs.traf.lat[acidx], bs.traf.lon[acidx], 
+                                    acrte.wplat[prev2wp], acrte.wplon[prev2wp])
                 actcond = acrte.operation_wp[iactwp] and \
                                 actdist < delivery_dist
                 prevcond = acrte.operation_wp[prevwp] and \
                                 prevdist < delivery_dist
+                prev2cond = acrte.operation_wp[prev2wp] and \
+                                prev2dist < delivery_dist
                 # when distance is neglible, set SPD to 0 manually and start operation process
-                # Two checks:
+                # Three checks:
                 #   1. actcond: checks distance for active wp
                 #   2. prevcond: checks distance for previous wp
-                # both are required (2 for e.g. spawn sorties)
-                if (prevcond or actcond)\
+                #   3. prev2cond: very rarely skips 2 wps without checking this
+                #       wp. Happens if multiple operations are close
+                if (prevcond or actcond or prev2cond)\
                         and acid not in self.operational_states:
-                    iactwp = iactwp if actcond else iactwp - 1
+                    if prevcond:
+                        iactwp = max(0, iactwp - 1)
+                    elif prev2cond:
+                        iactwp = max(0, iactwp - 2) 
                     self.commence_operation(acrte, acidx, acid, iactwp)
                     
                 # check whether an operation is active, or start timer when vehicle is stationary at ALT and SPD 0
@@ -188,6 +199,7 @@ class Operations(Entity):
                                                             )
                         # Increment customers served by 1
                         self.custs_served += 1
+                        self.custs_served_list.append(self.operational_states[acid]['custid'])
                         try:
                             self.drone_manager.active_drones[acid]['del_done'] = True
                         except:
@@ -292,7 +304,7 @@ class Operations(Entity):
             stack.stack(f'{acid} ATSPD 2 VNAV {acid} ON')
             bs.traf.swlnav[acidx] = True
         else:
-            stack.stack(f'SPDAP {acid} 5')
+            # stack.stack(f'SPDAP {acid} 5')
             bs.traf.swlnav[acidx] = True
             bs.traf.swvnav[acidx] = True
             bs.traf.swvnavspd[acidx] = True

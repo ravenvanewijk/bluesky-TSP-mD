@@ -320,15 +320,24 @@ class DeliverConquer(Entity):
                 reset_cmd_time = len(self.customers) // 5
                 stack.stack(f"SCHEDULE 00:{'{:02}'.format(reset_cmd_time)}:00 "
                             "TRKDEL TRUCK")
-            self.customers[u].location = \
-                np.around([road_route_merged.xy[1][0], 
-                            road_route_merged.xy[0][0]], 6)
-            wp_commands = construct_scenario(self.truckname, road_route_merged, 
-                                                                    spd_lims)
+            if road_route_merged.is_empty:
+                # No route between them, take end pos of last route
+                self.customers[u].location = prevpos
+                wp_commands = f'ADDTDWAYPOINTS {self.truckname}, {prevpos[0]}'+\
+                            f',{prevpos[1]}, 0, 30, TURNSPD, 10'
+            else:
+                self.customers[u].location = \
+                    np.around([road_route_merged.xy[1][0], 
+                                road_route_merged.xy[0][0]], 6)
+                wp_commands = construct_scenario(self.truckname, 
+                                                road_route_merged, spd_lims)
+                prevpos = np.around([road_route_merged.xy[1][-1], 
+                    road_route_merged.xy[0][-1]], 6)
+
+            stack.stack(wp_commands)
             self.routing_cmds[f'{u}-{v}'] = wp_commands
             self.routing_etas[f'{u}-{v}'] = etas
             self.trucketa.extend(etas)
-            stack.stack(wp_commands)
             self.added_route.append((u, v))
             if v == 0:
                 continue
@@ -433,6 +442,9 @@ class DeliverConquer(Entity):
 
         dcustid = self.model.P[0].tour[custidx]
         ncustid = self.model.P[0].tour[min(custidx + 1,     
+                                        len(self.model.P[0].tour) - 1)]
+        if ncustid in bs.traf.Operations.custs_served_list:
+            ncustid = self.model.P[0].tour[min(custidx + 2,     
                                         len(self.model.P[0].tour) - 1)]
 
         # if dcustid != self.current_route[0] and self.current_route[0] != 0 \
@@ -1338,7 +1350,7 @@ class DeliverConquer(Entity):
                 # in case we can turn to that wp anymore. This ensures the wp 
                 # is not selected and the drone will make the turn.
                 if not turn_feasible(abs(bs.traf.hdg[droneidx] - wphdg), 
-                                                                    dist_jk):
+                    dist_jk, bs.traf.tas[droneidx] / (self.cruise_spd * kts)):
                     drone_t_jk = 1e10
                 else:
                     drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
