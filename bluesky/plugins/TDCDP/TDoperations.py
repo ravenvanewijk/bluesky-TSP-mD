@@ -323,10 +323,12 @@ class Operations(Entity):
         if len(self.operational_states) == 0 and\
             len(self.drone_manager.active_drones) == 0 and not\
             bs.traf.swlnav[id]:
+            truckdist = bs.traf.distflown[id]
             bs.traf.delete(id)
             # Update number of aircraft
             bs.traf.ntraf = len(bs.traf.lat)
-            self.data_logger.log_data({'type': 'Completion', 'completion_time: ': bs.sim.simt})
+            self.data_logger.log_data({'type': 'Completion', 'completion_time: ': bs.sim.simt, 
+                                        'truck_distance':truckdist})
             self.data_logger.shutdown()
             stack.stack('HOLD')
         else:

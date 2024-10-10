@@ -101,7 +101,8 @@ class DataLogger:
             log_entry = {
                 "type": "drone_operation",
                 "child": child,
-                "op_type": op_type
+                "op_type": op_type,
+                "op_time": op_time
             }
 
         self.log_data(log_entry)

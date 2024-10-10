@@ -327,4 +327,6 @@ def turn_feasible(hdg, dist, spd_factor):
         return False
     if dist / spd_factor < 0.08 and dist < 0.05 + (hdg - 30) * 0.005:
         return False
+    if dist / spd_factor < 0.04 and dist < 0.027 + (hdg - 15) * 0.005:
+        return False
     return True
