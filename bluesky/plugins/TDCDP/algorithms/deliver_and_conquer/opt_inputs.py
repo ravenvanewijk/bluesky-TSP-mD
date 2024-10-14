@@ -323,6 +323,7 @@ def update_range(R, distflown):
     return R - distflown / 1000
 
 def turn_feasible(hdg, dist, spd_factor):
+    spd_factor = spd_factor**2
     if dist / spd_factor < 0.15 + (hdg - 60) * 0.005:
         return False
     if dist / spd_factor < 0.08 and dist < 0.05 + (hdg - 30) * 0.005:

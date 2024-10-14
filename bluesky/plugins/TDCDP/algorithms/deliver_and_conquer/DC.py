@@ -239,7 +239,7 @@ class DeliverConquer(Entity):
     def drone_uncertainty(self, *args):
         self.drone_spd_factors = [float(arg) for arg in args]
         
-    def gen_lr_locs(self, cust_only = False):
+    def gen_lr_locs(self, cust_only=False):
         """Generate locations where an operation, i.e. a sortie or rendezvous
         are possible on the graph that has been loaded
         
@@ -492,14 +492,24 @@ class DeliverConquer(Entity):
             dronecustwpidx = find_index_with_tolerance(dcust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
-            raise ValueError(f"Customer {dcustid} with coordinates " + \
-                            f"{dcust_latlon} not found in route")
+            try:
+                dronecustwpidx = rte.custid.index(dcustid)
+            except ValueError:
+                raise ValueError(f"Customer {dcustid} with coordinates " + \
+                                f"{dcust_latlon} not found in route")
+
         try:
             nextcustwpidx = find_index_with_tolerance(ncust_latlon, wplats, 
                                                                         wplons)
         except ValueError:
-            raise ValueError(f"Customer {ncustid} with coordinates " + \
-                            f"{ncust_latlon} not found in route")
+            try:
+                nextcustwpidx = rte.custid.index(ncustid)
+            except ValueError:
+                if ncustid == 0:
+                    nextcustwpidx = len(rte.wplat) - 1
+                else:
+                    raise ValueError(f"Customer {ncustid} with coordinates" + \
+                                    f" {ncust_latlon} not found in route")
 
         # Create second truck to perform calculations
         bs.traf.cre(self.recon_name, "Truck", bs.traf.lat[truckidx], 
@@ -1265,10 +1275,25 @@ class DeliverConquer(Entity):
                             [min(curcust_idx + cor + int(self.M) + 1, 
                                 len(self.model.P[0].tour) - 1)]
         cust_max_loc = self.customers[cust_max].location
-        max_wp = find_index_with_tolerance(cust_max_loc,
-                                            rte.wplat,
-                                            rte.wplon)
-
+        try:
+            max_wp = find_index_with_tolerance(cust_max_loc,
+                                                rte.wplat,
+                                                rte.wplon)
+        except ValueError:
+            try:
+                max_wp = rte.custid.index(cust_max)
+                if rte.iactwp > max_wp:
+                    # Circular route with customer being added to the earlier 
+                    # wp. Find later customer.
+                    cust_max = self.model.P[0].tour \
+                        [min(curcust_idx + cor + int(self.M) + 2, 
+                            len(self.model.P[0].tour) - 1)]
+                    cust_max_loc = self.customers[cust_max].location
+                    max_wp = find_index_with_tolerance(cust_max_loc, rte.wplat,
+                                                                    rte.wplon)
+            except ValueError:
+                raise ValueError(f"Customer {cust_max} with coordinates " + \
+                                f"{cust_max_loc} not found in route")
         eta = self.reconeta if bs.traf.id[truckidx] == self.recon_name else \
                                                             self.trucketa
 
@@ -1342,6 +1367,7 @@ class DeliverConquer(Entity):
             d_j[wpid_i] = 0
             t_jk = {}
             T_i[wpid_i] = 0
+            R = update_range(self.R, bs.traf.distflown[droneidx]) 
             for wp in P:
                 wphdg, dist_jk = kwikqdrdist(loc_A[0], loc_A[1],
                     rte.wplat[wp],

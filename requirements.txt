@@ -43,14 +43,14 @@ pytz==2024.1
 PyYAML==6.0.2
 pyzmq==26.0.3
 requests==2.32.3
-roadroute-lib @ git+https://github.com/ravenvanewijk/roadroute-lib@421bdff2110c551aeeb4a65398e4a398ae188121
+roadroute-lib @ git+https://github.com/ravenvanewijk/roadroute-lib@a5539e12dfa55637b7fb083cb52ed0410e1a7f1d
 Rtree==1.3.0
 scipy==1.14.0
 setuptools==69.5.1
 shapely==2.0.4
 six==1.16.0
 SQLAlchemy==2.0.35
-taxicab_st @ git+https://github.com/ravenvanewijk/taxicab-st.git@9ce219b81fc4328052c7c56b79b64671916bcdf2
+taxicab_st @ git+https://github.com/ravenvanewijk/taxicab-st.git@ba19de7cdffff875eda4ab4d37dd60c11f457d93
 tqdm==4.66.5
 typing_extensions==4.12.2
 tzdata==2024.1
