@@ -274,7 +274,8 @@ def TSP_operations(A, op_drones, k_drones):
 
 def plot_route(G, lats, lons, title=None, labels=None, point_lat=None, 
                                             point_lon=None, point_label=None):
-    fig, ax = ox.plot_graph(G, show=False, close=False)
+    fig, ax = ox.plot_graph(G, show=False, close=False, node_edgecolor='black', dpi=300)
+    ax.set_facecolor('white')
     # Check the validity of lats and lons
     if not len(lats) == len(lons) or len(lats) > len(mcolors.BASE_COLORS):
         return
@@ -292,10 +293,19 @@ def plot_route(G, lats, lons, title=None, labels=None, point_lat=None,
     if point_lat is not None and point_lon is not None:
         ax.plot(point_lon, point_lat, 'ro', markersize=8, label=point_label or 
                                                                     'Point')
+    
+    ax.plot(lons[0][0], lats[0][0], 'gs', markersize=8, label='Start location')
+    ax.plot(lons[0][-1], lats[0][-1], 'bs', markersize=8, label='Reference point')
 
-    plt.legend()
-    plt.title(title)
+    ax.set_xlim([-78.87604, -78.84937])  # Set x-limits to the longitude range
+    ax.set_ylim([42.90397, 42.91853])  # Set y-limits to the latitude range
+
+    plt.legend(loc='upper left', fontsize=16)
+    # plt.title(title)
+    # plt.savefig('alteredroute5.png', dpi=300, bbox_inches='tight')
     plt.show()
+
+    plt.close()
 
 class Customer:
     """

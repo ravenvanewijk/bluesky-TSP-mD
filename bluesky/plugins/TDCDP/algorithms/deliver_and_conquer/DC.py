@@ -556,14 +556,14 @@ class DeliverConquer(Entity):
         #                     ['Truck'],
         #                     dcust_latlon[0],
         #                     dcust_latlon[1],
-        #                     f'Customer {dcustid}')
+        #                     f'Customer')
         # plot_route(self.G, [rte_recon.wplat[:reconwpidx + 1], uav_lat], 
         #                     [rte_recon.wplon[:reconwpidx + 1], uav_lon],
         #                     f'Route with serving next customer by drone',
         #                     ['Truck', 'Drone'],
         #                     dcust_latlon[0],
         #                     dcust_latlon[1],
-        #                     f'Customer {dcustid}')
+        #                     f'Customer')
         # eta_r_route_c = LineString(zip(rte.wplon, rte.wplat))
         # eta_m_route_c = LineString(zip(rte_recon.wplon, rte_recon.wplat))
         # eta_r_route = LineString(zip(rte.wplon[rte.iactwp:truckwpidx + 1], rte.wplat[rte.iactwp:truckwpidx +1]))
@@ -888,6 +888,15 @@ class DeliverConquer(Entity):
         # Get matching LR locations on route
         wp_indices = find_wp_indices(rte, self.lr_locs, max_wp)
 
+        try: 
+            # Remove the customer loc from possibilities, no point in 
+            # picking up the drone there. Also not allowed
+            d_wp = find_index_with_tolerance(self.customers[dcustid].location, 
+                                        rte.wplat, 
+                                        rte.wplon)
+            wp_indices = np.delete(wp_indices, np.where(wp_indices == d_wp))
+        except:
+            pass
         # conditional parameters
         if bs.traf.id[truckidx] == self.recon_name:
             eta = self.reconeta
@@ -1378,6 +1387,11 @@ class DeliverConquer(Entity):
                 if not turn_feasible(abs(bs.traf.hdg[droneidx] - wphdg), 
                     dist_jk, bs.traf.tas[droneidx] / (self.cruise_spd * kts)):
                     drone_t_jk = 1e10
+                elif rte.wplat[wp] == active_drones[drone]['lat_j'] and \
+                    rte.wplon[wp] == active_drones[drone]['lon_j']:
+                    # prohibit pickup at delivery, convenience for algorithm
+                    # basically never happens
+                    drone_t_jk = 1e10 
                 else:
                     drone_t_jk = calc_drone_ETA(dist_jk, self.cruise_spd, 
                             self.vspd_up, self.vspd_down, self.cruise_alt, 3.5,
